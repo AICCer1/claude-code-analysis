@@ -79,7 +79,14 @@
   - 精确到文件和关键函数的分析
   - 告诉你该从哪些函数入手，而不是盲扫几千个文件
 
-### 4. 自动生成索引
+### 4. 时序与调用链
+
+- [`docs/07-main-loop-sequence-and-call-chains.md`](docs/07-main-loop-sequence-and-call-chains.md)
+  - 主循环时序图
+  - Tool / Hook / Stop / Agent 调用链图
+  - REPL 路径与 SDK 路径对照
+
+### 5. 自动生成索引
 
 - [`docs/generated/directory-counts.md`](docs/generated/directory-counts.md)
   - 顶层目录文件计数
