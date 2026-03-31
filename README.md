@@ -2,34 +2,30 @@
 
 > 分析对象：`ChinaSiro/claude-code-sourcemap`
 >
-> 说明：这是对 Claude Code 已发布 npm 包还原源码的**架构分析仓**。重点不是“有没有价值”，而是：**系统模型、模块边界、运行时主线、扩展平面、故障域、文件/函数入口**。
+> 本仓库定位为 Claude Code 还原源码的**架构分析仓**。重点在于系统模型、模块边界、运行时主线、扩展平面、故障域以及文件/函数级入口，而非价值判断或背景性讨论。
 
-## 先说一句大白话
+## 架构定义
 
-你如果是用**架构师视角**看这个仓，最应该得到的不是：
-- 它值不值得研究
-- 它像不像 Claude Code
+从系统设计角度，可以将 Claude Code 定义为：
 
-而应该是这句：
+> **一套 terminal-native agent runtime platform：以 Query Runtime 为中心，以 Tool Execution Plane 为执行层，以 Lifecycle / Governance Plane 为治理层，以 MCP / Skills / Plugins 为扩展层，以 Agent / Task / Team 为协作层。**
 
-> **Claude Code 本质上是一个 terminal-native 的 agent runtime platform：以 Query Runtime 为心脏，以 Tool Plane 为执行器，以 Hook Plane 为治理层，以 MCP / Skills / Plugins 为扩展层，以 Agent / Task / Team 为协作层。**
-
-这才是这套分析仓现在的主线。
+这一表述构成当前文档体系的主线。
 
 ---
 
-## 推荐阅读顺序（架构师视角）
+## 推荐阅读顺序
 
 ### 0. 入口
 - [`docs/00-architecture-first-index.md`](docs/00-architecture-first-index.md)
-  - 为什么旧版文档不够“架构师视角”
-  - 现在应该从哪几篇开始读
+  - 架构主线阅读顺序
+  - 与旧版研究性文档的关系
 
 ### 1. 系统模型
 - [`docs/08-architectural-system-model.md`](docs/08-architectural-system-model.md)
-  - Claude Code 到底是什么系统
-  - 一级子系统怎么分
-  - 哪些是 core，哪些是 shell
+  - 系统定义
+  - 一级子系统划分
+  - 中心模块与外围模块
 
 - [`docs/09-boundaries-ownership-and-invariants.md`](docs/09-boundaries-ownership-and-invariants.md)
   - 模块边界
@@ -64,16 +60,16 @@
 
 ---
 
-## 这套分析到底回答什么
+## 这套分析回答的问题
 
-现在这套仓主要回答 6 个架构问题：
+本仓库重点回答以下架构问题：
 
-1. **系统模型是什么？**
-2. **核心运行时由哪些 plane 组成？**
-3. **Query / Tool / Hook / Agent / MCP 之间的关系是什么？**
-4. **谁拥有状态？谁拥有控制权？**
-5. **扩展能力如何接入系统？**
-6. **故障发生时，在哪一层被吸收和收口？**
+1. **系统模型是什么**
+2. **核心运行时由哪些 plane 组成**
+3. **Query / Tool / Hook / Agent / MCP 之间的关系是什么**
+4. **谁拥有状态，谁拥有控制权**
+5. **扩展能力如何接入系统**
+6. **故障在何处被吸收与收口**
 
 ---
 
@@ -100,14 +96,14 @@
 - `docs/generated/key-file-symbols.md`
 - `docs/generated/directory-counts.md`
 
-### E. 背景说明（辅助读物）
+### E. 背景说明
 - `01-repo-positioning-and-value.md`
 
-这篇现在降级成背景说明，不再是主入口。
+`01` 现作为背景与边界说明保留，不再作为主入口。
 
 ---
 
-## 最值得看的核心文件
+## 核心文件优先级
 
 ### 第一梯队
 1. `restored-src/src/query.ts`
@@ -127,29 +123,19 @@
 
 ---
 
-## 架构上最值得借鉴的 5 个点
+## 当前范围
 
-1. **Query Runtime 是系统心脏，不是简单 API wrapper**
-2. **Tool Plane 独立存在，工具通过统一协议接入**
-3. **Hook Plane 是治理层，不是 callback 杂物箱**
-4. **AgentTool 让“启动另一个 agent”成为正式能力**
-5. **MCP / skills / plugins / commands 形成了分层扩展体系**
-
----
-
-## 当前仓库范围
-
-本仓库分析基于：
+分析范围包括：
 - `README.md`
 - `package/package.json`
 - `package/README.md`
 - `restored-src/src/**`
 
 目标是：
-- 理解 Claude Code 的**系统结构和运行时设计**
-- 提炼可迁移到自研 agent 项目的**架构模式**
-- 明确哪些部分是**核心 runtime**，哪些只是**产品壳**
+- 建立 Claude Code 的系统结构理解
+- 提炼可迁移到自研 agent 项目的架构模式
+- 区分核心运行时与交互/接入层
 
-不声称：
-- 这就是 Anthropic 官方内部开发仓
-- 还原了所有私有实现和构建环境
+不包含以下主张：
+- 将该仓视为 Anthropic 官方内部开发仓
+- 假定已还原全部私有实现或构建环境

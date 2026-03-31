@@ -1,159 +1,154 @@
-# Claude Code 的系统模型（架构师视角）
+# Claude Code 的系统模型
 
-## 1. 先给结论：这不是“工具集”，而是“运行时平台”
+## 1. 系统定位
 
-如果用架构师语言定义 Claude Code，这个仓更像：
+从架构角度看，Claude Code 更适合被定义为一套 **terminal-native agent runtime platform**，而不是一个“命令行工具集合”或“对话界面叠加若干工具”的实现。
 
-> **一个面向 terminal 场景的 agent runtime platform**
+该系统具备如下结构性特征：
 
-而不是：
+- 存在明确的启动与装配阶段
+- 存在独立的会话与查询运行时
+- 存在独立的工具执行平面
+- 存在生命周期治理机制
+- 存在多条扩展接入通路
+- 存在多代理协作与任务化能力
+- 存在共享状态、权限、持久化等基础设施底座
 
-- 一个聊天程序 + 一堆工具
-- 一个 REPL + prompt engineering
-- 一个工具调用 demo
-
-它的核心不是某个 prompt，也不是某个工具，而是一个稳定运行时模型：
-
-- 有入口与装配阶段
-- 有会话与 query 驱动阶段
-- 有工具执行平面
-- 有 hook 治理平面
-- 有扩展平面
-- 有协作平面
-- 有状态与基础设施平面
-- 最外层才是终端 UI 壳
+因此，其核心不在单个 prompt 或单个工具，而在于一套稳定的运行时组织方式。
 
 ---
 
-## 2. 最高层系统分解
+## 2. 一级子系统划分
 
-从系统职责而不是目录命名出发，这个产品可以拆成 7 个一级子系统。
+从职责而不是目录命名出发，Claude Code 可以划分为 7 个一级子系统。
 
 ### A. Entrypoint / Composition Root
 **代表文件：** `main.tsx`
 
-这是整个系统的 composition root：
-- 解析 CLI 输入
-- 读取 settings / auth / mode / environment
-- 初始化 hooks / MCP / commands / skills / agents
-- 决定进入 REPL、headless、SDK、remote 哪条路径
+职责：
+- 解析 CLI 参数与运行模式
+- 初始化 settings、auth、hooks、MCP、commands、skills、agents
+- 决定进入 REPL、headless、SDK、remote 等运行路径
 
-**架构定位：**
-不是业务层，而是**装配层**。
+定位：
+- 系统装配层
+- 非核心业务执行层
 
 ---
 
 ### B. Session / Query Runtime
 **代表文件：** `query.ts`, `QueryEngine.ts`
 
-这是 Claude Code 的核心执行引擎：
-- 持有会话消息与上下文
+职责：
+- 持有消息历史与上下文
 - 驱动模型请求
-- 驱动多轮 agentic turn
-- 处理 tool_use / tool_result / continuation / compaction / fallback
+- 组织多轮 agentic turn
+- 处理 tool_use、tool_result、continuation、compaction、fallback
 
-**架构定位：**
-是系统的**核心域运行时**。
+定位：
+- 系统核心运行时
+- 主流程控制中心
 
 ---
 
 ### C. Tool Execution Plane
 **代表文件：** `Tool.ts`, `tools.ts`, `services/tools/*`
 
-这一层负责把“模型请求外部能力”变成正式可执行动作：
-- tool 抽象协议
-- tool pool 组装
-- tool 调度
-- 串行/并行控制
-- 中断/失败/结果包装
+职责：
+- 定义统一工具协议
+- 构建工具池
+- 组织工具调度
+- 处理串行/并行、中断、失败与结果包装
 
-**架构定位：**
-是系统的**执行平面（execution plane）**。
+定位：
+- 执行平面
+- 能力调用基础设施
 
 ---
 
 ### D. Lifecycle / Governance Plane
 **代表文件：** `utils/hooks.ts`, `utils/hooks/*`, `schemas/hooks.ts`
 
-这一层负责：
-- 对生命周期建模
-- 对运行时插入策略/治理/审计逻辑
-- 在不修改主流程的前提下控制系统行为
+职责：
+- 建模生命周期事件
+- 管理 hook 匹配、执行与结果解释
+- 将策略、审计、阻断与附加上下文等治理能力接入主流程
 
-**架构定位：**
-是系统的**治理平面（governance plane）**。
+定位：
+- 治理平面
+- 生命周期控制扩展层
 
 ---
 
 ### E. Extension Plane
 **代表文件：** `services/mcp/*`, `skills/*`, `plugins/*`, `commands.ts`
 
-这一层是系统扩展能力的正式入口：
-- MCP server 接入
-- skills 注入
-- plugin 注入
-- commands 扩展
-- 资源/工具/命令扩展
+职责：
+- 接入 MCP server
+- 加载 skills、plugins、commands 扩展
+- 将外部能力统一转化为系统内部可治理的能力对象
 
-**架构定位：**
-是系统的**扩展平面（extension plane）**。
+定位：
+- 扩展平面
+- 外部能力整合层
 
 ---
 
 ### F. Collaboration Plane
 **代表文件：** `tools/AgentTool/*`, `tasks/*`, `Team*Tool`, `SendMessageTool`
 
-这一层把“多代理协作”正式化：
+职责：
 - 启动 subagent
-- task 注册与管理
-- team / teammate / message routing
-- foreground/background agent 协作
+- 管理 task 生命周期
+- 建模 team / teammate / message routing
+- 支持前台/后台代理协作
 
-**架构定位：**
-是系统的**协作平面（collaboration plane）**。
+定位：
+- 协作平面
+- 多代理运行时层
 
 ---
 
 ### G. State / Policy / Persistence Infrastructure
-**代表文件：** `state/AppStateStore.ts`, `bootstrap/state.ts`, `utils/sessionStorage.ts`, settings/permission 相关模块
+**代表文件：** `state/AppStateStore.ts`, `bootstrap/state.ts`, session/settings/permission 相关模块
 
-这一层承接：
-- 全局状态
-- 权限模式
-- transcript / storage
-- plugin/MCP/task 持续状态
-- 提示、通知、队列、history
+职责：
+- 维护共享状态
+- 管理权限模式与规则
+- 持久化 transcript、session、plugin、MCP、task 等状态
+- 承载 notification、elicitation、history 等横切能力
 
-**架构定位：**
-是系统的**基础设施底盘**。
+定位：
+- 基础设施底座
+- 共享事实源承载层
 
 ---
 
-## 3. Claude Code 的真实骨架，不是 UI，而是这 4 层
+## 3. 核心结构关系
 
-从架构上看，Claude Code 最本质的不是组件层，而是下面这条主骨架：
+从系统结构上看，Claude Code 的核心并不在终端 UI，而在以下四个平面之间的协作关系：
 
 ```text
 Query Runtime
-  -> Tool Plane
-  -> Hook/Governance Plane
+  -> Tool Execution Plane
+  -> Lifecycle / Governance Plane
   -> Extension Plane
 ```
 
-换句话说：
+其中：
 
-- `Query Runtime` 决定“何时做事”
-- `Tool Plane` 决定“怎么执行事”
-- `Hook Plane` 决定“允不允许、要不要改、要不要拦”
-- `Extension Plane` 决定“系统还能接入哪些新能力”
+- `Query Runtime` 负责主流程推进
+- `Tool Execution Plane` 负责能力执行
+- `Lifecycle / Governance Plane` 负责治理与控制
+- `Extension Plane` 负责系统能力扩展
 
-这四个平面才是 Claude Code 的 architectural core。
+这四个部分构成了系统的主要架构核心。
 
 ---
 
-## 4. 系统中的三类对象
+## 4. 系统中的一等对象
 
-如果从领域建模角度看，这套系统里有三类一等对象。
+从领域建模角度，可以将系统中的核心对象分为三类。
 
 ### 4.1 会话对象（Session Objects）
 - message history
@@ -161,10 +156,10 @@ Query Runtime
 - user context / system context
 - transcript
 - token budget
-- current model
-- stop state / compact state
+- model selection
+- stop / compact 状态
 
-这些对象由 Query Runtime 持有和推进。
+这些对象主要由 Query Runtime 持有和推进。
 
 ---
 
@@ -176,51 +171,49 @@ Query Runtime
 - Plugin
 - Resource
 
-这些对象定义系统“能做什么”。
+这些对象定义系统可暴露和可调用的能力边界。
 
 ---
 
-### 4.3 协作对象（Coordination Objects）
+### 4.3 协调对象（Coordination Objects）
 - Agent
 - Task
 - Team / Teammate
-- Hook event
-- Permission rule
+- Hook Event
+- Permission Rule
 - Notification / Elicitation
 
-这些对象定义系统“如何协调执行”。
+这些对象定义系统如何协调执行、治理行为与组织协作。
 
 ---
 
-## 5. 为什么说它是平台，不是普通应用
+## 5. 平台化特征
 
-判断一个东西是不是 platform，关键看扩展和治理是否是正式结构。
+Claude Code 呈现出明显的平台化特征，主要体现在以下三点。
 
-Claude Code 这里明显满足：
+### 5.1 扩展能力具备正式接入路径
+- MCP 接入后可转化为工具、资源、提示与交互能力
+- Skill 具备 frontmatter、路径触发、工具约束等正式结构
+- Plugin 具备更完整的安装、刷新、错误管理与扩展整合机制
 
-### 5.1 扩展不是旁路
-- MCP 不是外挂，而是进入工具/资源/命令系统
-- skill 不是 markdown 注释，而是可加载扩展单元
-- plugin 不是脚本目录，而是正式插件机制
+### 5.2 治理能力具备正式协议
+- Hook 并非散落回调，而是基于生命周期事件的治理机制
+- Permission 具备独立规则与模式
+- Stop / Session / Tool / Config / File 等阶段具备统一挂点
 
-### 5.2 治理不是散落逻辑
-- hooks 是正式生命周期协议
-- permission 是正式规则系统
-- stop/session/tool 阶段都可被治理
+### 5.3 协作能力具备正式运行时模型
+- Subagent 通过 AgentTool 进入系统
+- Task、Team、Message Routing 并非提示技巧，而是正式对象与流程
 
-### 5.3 协作不是 prompt 技巧
-- subagent 是正式 Tool
-- task/team/message routing 是正式 runtime 能力
-
-这三个条件一满足，它就不是简单应用了，而是**可治理、可扩展、可协作的运行时平台**。
+这些结构性特征共同决定了该系统更接近运行时平台，而非单体式交互程序。
 
 ---
 
-## 6. 架构中的“中心”与“边缘”
+## 6. 中心模块与外围模块
 
-从演化角度看，这个仓的模块不是平权的。
+从架构重要性角度，可将系统模块区分为“中心模块”与“外围模块”。
 
-### 中心模块（核心，不可轻易替换）
+### 中心模块
 1. `query.ts` / `QueryEngine.ts`
 2. `Tool.ts` / `tools.ts`
 3. `services/tools/*`
@@ -229,93 +222,72 @@ Claude Code 这里明显满足：
 6. `tools/AgentTool/*`
 7. `services/mcp/*`
 
-这些决定系统行为模型。
+这些模块决定系统的运行方式与行为模型。
 
-### 边缘模块（可替换外壳）
+### 外围模块
 1. `components/*`
 2. `ink/*`
 3. `screens/*`
 4. `buddy/*`
 5. `voice/*`
 6. `vim/*`
-7. 某些 bridge / remote 外壳能力
+7. 部分 bridge / remote 交互层能力
 
-这些更多决定产品体验，而不是核心运行时。
-
-**这点很重要：**
-如果你想借鉴 Claude Code 架构，不应该先抄 UI，而应该先抄中心模块的关系。
+这些模块主要影响交互形态和产品体验，而不是运行时核心机制。
 
 ---
 
-## 7. REPL 只是壳，不是心脏
+## 7. REPL 在系统中的角色
 
-这个判断很关键。
+REPL 是重要入口，但不是系统架构中心。
 
-很多人第一次看 Claude Code 会误以为：
-> 它是一个做得很重的终端 UI 产品。
+该判断基于以下事实：
+- 存在 `QueryEngine` 作为 headless/SDK 路径
+- query / tool / hook / session 的关键逻辑不依赖 UI 才能成立
+- 系统内部已经形成较清晰的运行时与界面分离趋势
 
-这只说对了一半。
-
-更准确的说法是：
-
-> 它是一个 runtime 很重的 agent 平台，外面包了一个做得也很重的 terminal shell。
-
-证据是：
-- 有 `QueryEngine` 这种 headless/SDK 入口
-- query/tool/hook/session 逻辑并不依赖 UI 才成立
-- 很多能力明显在往“可嵌入 runtime”方向抽象
-
-所以 REPL 是重要入口，但不是 architectural center。
+因此，REPL 更适合作为交互载体，而不是系统本体的定义。
 
 ---
 
-## 8. 这套系统最像什么架构风格
+## 8. 近似的架构风格
 
-它不是标准 MVC，也不是纯插件框架，更像这三种风格的混合：
+Claude Code 不严格对应某一种经典架构模板，但其组织方式呈现出以下几种风格的组合特征：
 
-### 8.1 Runtime-centric architecture
-系统围绕“会话运行时”设计，而不是围绕页面或请求控制器设计。
+### 8.1 Runtime-centric Architecture
+系统围绕会话运行时组织，而不是围绕页面、控制器或单次请求组织。
 
-### 8.2 Hexagonal / Ports-and-Adapters 倾向
-- Tool / MCP / plugin / skill 都像 adapter
-- Query Runtime 更像 application core
-- Hook 是横切治理端口
+### 8.2 Ports-and-Adapters / Hexagonal 倾向
+- Tool、MCP、Plugin、Skill 具有 adapter 特征
+- Query Runtime 更接近核心应用层
+- Hook 更接近横切治理端口
 
-虽然它不严格按 hexagonal 教科书写，但味道很明显。
+### 8.3 Control Plane / Execution Plane 分离
+- Query Runtime 负责控制与编排
+- Tool Plane 负责执行
+- Hook Plane 负责治理
+- State / Persistence 负责共享事实源与持久化
 
-### 8.3 Control Plane + Execution Plane 分离
-- Query 决策与编排
-- Tool 执行
-- Hook 治理
-- State 持久化
-
-这是一种很典型的 agent platform 架构特征。
+这种分层方式是 agent runtime 平台常见的结构特征。
 
 ---
 
-## 9. 架构师最该关注的 5 个点
+## 9. 架构关注重点
 
-### 9.1 Query Runtime 是核心领域层
-不是模型 SDK 包装器，而是真正的业务 runtime。
+从架构评审角度，最应关注以下五点：
 
-### 9.2 Tool Plane 是执行系统，不是工具列表
-重点不在工具数量，而在执行协议、并发控制、权限、结果回流。
-
-### 9.3 Hook Plane 是治理系统
-它承担的是 policy/audit/control，而不只是 callback。
-
-### 9.4 Extension Plane 决定平台化程度
-MCP、skills、plugins、commands 四条扩展路径同时存在，这是平台信号。
-
-### 9.5 Collaboration Plane 决定它是否真的是 agent system
-有正式 AgentTool / task / team，才说明它真把多代理做进 runtime。
+1. **Query Runtime 是否保持主流程控制权**
+2. **Tool Plane 是否通过统一协议吸纳执行能力**
+3. **Hook Plane 是否以生命周期协议而非散落回调实现治理**
+4. **Extension Plane 是否能够在不污染核心运行时的前提下扩展能力**
+5. **Collaboration Plane 是否将多代理协作建模为正式运行时能力**
 
 ---
 
-## 10. 最后一句话
+## 10. 结论
 
-如果你用架构师视角去看 Claude Code，这个仓最核心的结论不是“值不值得研究”，而是：
+综合上述分析，可将 Claude Code 概括为：
 
-> **Claude Code 的本质是一套以 Query Runtime 为中心、以 Tool Plane 为执行器、以 Hook Plane 为治理层、以 MCP/skills/plugins 为扩展层、以 Agent/task/team 为协作层的 terminal-native agent runtime platform。**
+> **一套以 Query Runtime 为中心、以 Tool Execution Plane 为执行层、以 Lifecycle / Governance Plane 为治理层、以 MCP / Skills / Plugins 为扩展层、以 Agent / Task / Team 为协作层、以共享状态与持久化基础设施为底座的 terminal-native agent runtime platform。**
 
-这句话，才比较接近它的 architectural identity。
+这一定义更能够准确描述该系统的架构身份与模块关系。
