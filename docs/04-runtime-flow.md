@@ -260,7 +260,7 @@ Claude Code 的 MCP 客户端不是薄封装，而是一个很重的子系统。
 - proxy / TLS / session expiry / reconnect
 
 ### 结论
-MCP 在 Claude Code 里不是外挂，而是系统级能力。
+MCP 在 Claude Code 中不是附属能力，而是系统级扩展接入机制的一部分。
 
 ---
 

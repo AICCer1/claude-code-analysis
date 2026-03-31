@@ -1,81 +1,62 @@
-# Claude Code 主循环时序图 + Tool / Hook / Agent 调用链图
+# 主循环时序与调用链
 
-这一篇专门回答一个问题：
+## 1. 目标
 
-> **Claude Code 一轮 agent 行为，到底是怎么从“用户输入”一路跑到“模型输出 / 工具执行 / hook 处理 / stop 收尾 / 子代理协作”的？**
+本文描述 Claude Code 在单次回合中的主循环时序，以及 Query Runtime、Tool Execution Plane、Lifecycle / Governance Plane、Collaboration Plane 之间的调用关系。
 
-前面几篇已经把架构拆了，这篇就不再横着铺模块，而是**纵向走一遍调用链**。
+重点不在功能介绍，而在于明确：
 
----
-
-## 1. 总体认识：Claude Code 不是“单次问答”，而是一个回合引擎
-
-Claude Code 的一轮运行，本质上是这样：
-
-1. 用户输入进入 REPL / SDK
-2. 系统构建本轮 query 上下文
-3. 调用模型
-4. 如果模型产出 `tool_use`，进入工具调度
-5. 工具执行前后触发 hooks
-6. 工具结果回填到消息流
-7. 继续 assistant → tool_use → tool_result 循环
-8. 无工具或达到终点后执行 stop hooks
-9. 做 prompt suggestion / memory extract / auto-dream / cleanup
-10. 回合结束或继续下一轮
-
-所以 Claude Code 的核心不是“一次模型请求”，而是：
-
-> **一个多阶段、可中断、可扩展、带副作用管理的 agent turn runtime**
+- 一轮 agent turn 如何推进
+- 工具执行如何嵌入主循环
+- hooks 如何在主循环中施加治理能力
+- stop 阶段如何独立收尾
+- subagent 如何作为运行时能力进入主流程
 
 ---
 
-## 2. 主循环总时序图（REPL 路径）
+## 2. REPL 路径总时序
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User as 用户
+    participant User as User
     participant Main as main.tsx
-    participant REPL as REPL/commands/UI
+    participant REPL as REPL / Interaction Layer
     participant Query as query.ts::queryLoop()
     participant Model as Claude API
-    participant ToolExec as runTools()/StreamingToolExecutor
-    participant Tool as Tool.call()
-    participant Hooks as utils/hooks.ts
+    participant ToolExec as Tool Execution Plane
+    participant Hooks as Lifecycle / Governance Plane
     participant Stop as query/stopHooks.ts
 
-    User->>Main: 启动 claude / 输入 prompt
-    Main->>REPL: 初始化 settings/MCP/skills/plugins/commands/agents
-    REPL->>Query: 发起 query(...)
-    Query->>Query: buildQueryConfig / 组装 messages & contexts
+    User->>Main: CLI 启动 / 输入 prompt
+    Main->>REPL: 完成 settings/auth/MCP/skills/plugins/commands/agents 初始化
+    REPL->>Query: 调用 query(...)
+    Query->>Query: 构建上下文与配置
     Query->>Model: 发送 system + history + user
-    Model-->>Query: 流式 assistant / tool_use
+    Model-->>Query: 流式返回 assistant / tool_use
 
-    alt assistant 只回复文本
+    alt assistant 不含 tool_use
         Query->>Stop: handleStopHooks(...)
         Stop->>Hooks: executeStopHooks(...)
-        Stop-->>Query: blocking / continue / summary / cleanup
+        Stop-->>Query: stop 结果 / summary / cleanup
         Query-->>REPL: 输出 assistant 结果
-    else assistant 产出 tool_use
-        Query->>ToolExec: runTools(...) 或 StreamingToolExecutor
+    else assistant 含 tool_use
+        Query->>ToolExec: runTools(...) / StreamingToolExecutor
         ToolExec->>Hooks: executePreToolHooks(...)
-        Hooks-->>ToolExec: allow / block / updatedInput / decision
-        ToolExec->>Tool: tool.call(...)
-        Tool-->>ToolExec: tool_result / progress / attachment / contextModifier
-        ToolExec->>Hooks: executePostToolHooks(...) / executePostToolUseFailureHooks(...)
-        Hooks-->>ToolExec: additionalContext / block / stop / updatedMCPOutput
+        Hooks-->>ToolExec: allow / block / updated input / decision
+        ToolExec->>ToolExec: 执行 Tool.call(...)
+        ToolExec->>Hooks: executePostToolHooks(...) 或 executePostToolUseFailureHooks(...)
+        Hooks-->>ToolExec: additional context / block / stop / updated output
         ToolExec-->>Query: tool_result message
-        Query->>Model: 带 tool_result 继续下一轮
-        Model-->>Query: assistant / tool_use / stop
-        Query->>Stop: 若本轮结束则执行 stop hooks
+        Query->>Model: 继续下一轮
     end
 ```
 
 ---
 
-## 3. SDK / headless 路径时序图
+## 3. SDK / headless 路径时序
 
-REPL 路径偏终端交互；SDK 路径则更像把运行时封进一个类里。
+SDK / headless 路径并未实现一套完全独立的运行时，而是在不同交互承载方式下复用主运行时语义。
 
 ```mermaid
 sequenceDiagram
@@ -85,66 +66,48 @@ sequenceDiagram
     participant Input as processUserInput(...)
     participant Query as query(...)
     participant Model as Claude API
-    participant Tools as Tool Runtime
+    participant ToolExec as Tool Execution Plane
     participant Store as transcript/session storage
 
     Caller->>Engine: submitMessage(prompt)
-    Engine->>Input: processUserInput / systemPrompt parts / skills / memory
+    Engine->>Input: 处理输入、skills、memory、system prompt
     Engine->>Query: query(params)
     Query->>Model: 调用模型
-    Model-->>Query: assistant/tool_use
-    Query->>Tools: 执行工具与 hooks
-    Tools-->>Query: tool_result / events
+    Model-->>Query: assistant / tool_use
+    Query->>ToolExec: 工具执行与 hooks
+    ToolExec-->>Query: tool_result / stream events
     Query-->>Engine: SDKMessage 流
     Engine->>Store: recordTranscript / flushSessionStorage
-    Engine-->>Caller: assistant / result / usage / errors
+    Engine-->>Caller: assistant / usage / result / error
 ```
-
-### 这里最重要的判断
-
-`QueryEngine` 不是另起一套逻辑，而是：
-
-- 复用 `query.ts`
-- 复用 tools/hooks/session/transcript 能力
-- 只是把交互式 REPL concerns 包起来，提供 SDK 风格接口
-
-这说明 Claude Code 已经在做**runtime 与 UI 的部分解耦**。
 
 ---
 
-## 4. 启动阶段调用链图
+## 4. 启动阶段调用链
 
-核心入口是：`main.tsx`
+启动阶段的主要职责是完成装配，而非推进业务主流程。
 
-### 启动主线（逻辑图）
+### 调用链摘要
 
 ```text
 main()
-  -> 解析 CLI args / 模式 / flags
+  -> 解析 CLI 参数
   -> eagerLoadSettings()
   -> runMigrations()
   -> initializeEntrypoint()
-  -> 并行初始化：
-       - commandsPromise
-       - agentDefsPromise
-       - mcpConfigPromise
-       - setupPromise
-       - hooksPromise
-  -> 根据模式进入：
-       - REPL / interactive
-       - print/headless
-       - SDK / remote / bridge
+  -> 并行初始化 commands / agents / MCP / setup / hooks
+  -> 进入 REPL / headless / SDK / remote 路径
 ```
 
-### 这一阶段的架构信号
-
-1. `main.tsx` 很重，说明 Claude Code 不是轻 CLI
-2. commands / agents / MCP / setup 是并行预热的，说明启动期非常产品化
-3. hooks 在启动期就已经参与，不是纯 query 阶段才存在
+### 说明
+启动阶段是 Composition Root。其关注点在于：
+- 初始化顺序
+- 运行模式选择
+- 扩展和能力的预热与装配
 
 ---
 
-## 5. Query 主循环调用链图
+## 5. Query 主循环调用链
 
 核心文件：`query.ts`
 
@@ -152,41 +115,36 @@ main()
 - `query()`
 - `queryLoop()`
 - `yieldMissingToolResultBlocks()`
-- `handleStopHooks()`（实际在 `query/stopHooks.ts`）
 
-### Query 主循环（逻辑链）
+### 逻辑链
 
 ```text
 query()
   -> queryLoop()
       -> buildQueryConfig(...)
-      -> normalize / prepend userContext / append systemContext
-      -> 调用 Claude API（流式）
-      -> 收集 assistant message / tool_use
-      -> 如果有 tool_use:
-           -> runTools(...) 或 StreamingToolExecutor
-           -> 生成 tool_result messages
+      -> 构造 messages / contexts
+      -> 调用模型
+      -> 收集 assistant messages / tool_use
+      -> 若存在 tool_use:
+           -> 进入 Tool Execution Plane
+           -> 生成 tool_result 并回填消息流
            -> 继续 queryLoop 下一轮
-      -> 如果无 tool_use 或到达终点:
-           -> handleStopHooks(...)
-           -> 返回 Terminal / 结束本轮
+      -> 若本轮进入结束条件:
+           -> 进入 stop 阶段
+           -> 返回 terminal result
 ```
 
-### 这里最关键的事实
-
-Claude Code 不是“模型说一句 → 程序执行一句”。
-
-它是一个带状态的 loop：
-- history 持续增长
-- tool results 持续回填
-- compact 可能触发
-- fallback 可能触发
-- stop hooks 可能阻断或延续
-- token budget 会影响下一步行为
+### 说明
+Query 主循环的职责不是执行工具，而是控制一轮会话如何推进：
+- 何时请求模型
+- 何时执行工具
+- 何时进入下一轮
+- 何时执行 stop 阶段
+- 何时触发 compact 或 fallback
 
 ---
 
-## 6. Tool 执行调用链图
+## 6. Tool 执行调用链
 
 核心文件：
 - `Tool.ts`
@@ -196,9 +154,7 @@ Claude Code 不是“模型说一句 → 程序执行一句”。
 - `services/tools/toolExecution.ts`
 - `services/tools/toolHooks.ts`
 
----
-
-### 6.1 工具池装配链
+### 6.1 工具池形成路径
 
 ```text
 tools.ts
@@ -206,22 +162,10 @@ tools.ts
   -> getTools(permissionContext)
   -> filterToolsByDenyRules(...)
   -> assembleToolPool(permissionContext, mcpTools)
-  -> 得到最终可见工具池
+  -> 得到最终工具池
 ```
 
-### 含义
-
-工具不是散装注册，而是经过：
-- feature gate
-- deny rules
-- 模式裁剪
-- MCP 合并
-
-才形成最终给模型看的工具池。
-
----
-
-### 6.2 ToolUse 执行链
+### 6.2 工具执行路径
 
 ```mermaid
 flowchart TD
@@ -232,320 +176,183 @@ flowchart TD
     D --> F[toolExecution.runToolUse]
     E --> F
     F --> G[toolHooks.runPreToolUseHooks]
-    G --> H{是否允许继续}
-    H -->|block| I[返回 hook blocking/tool_result error]
+    G --> H{pre-hook 结果}
+    H -->|block| I[返回阻断结果]
     H -->|allow| J[Tool.call]
     J --> K[toolHooks.runPostToolUseHooks]
-    J --> L[失败则 runPostToolUseFailureHooks]
-    K --> M[additionalContext / updatedMCPOutput / stop]
-    L --> N[error attachments / blocking info]
-    M --> O[tool_result message 回到 queryLoop]
+    J --> L[失败路径: runPostToolUseFailureHooks]
+    K --> M[附加上下文 / 输出变更 / continuation control]
+    L --> N[错误结果 / failure attachment]
+    M --> O[tool_result 回到 queryLoop]
     N --> O
 ```
 
-### 关键文件分工
-
-#### `toolOrchestration.ts`
-最重要函数：
-- `runTools()`
-- `partitionToolCalls()`
-- `runToolsSerially()`
-- `runToolsConcurrently()`
-
-这层负责：
-- 决定哪些工具可以并发
-- 决定哪些工具必须独占
-- 保证 contextModifier 应用时机正确
-
-#### `StreamingToolExecutor.ts`
-最重要方法：
-- `addTool()`
-- `processQueue()`
-- `createSyntheticErrorMessage()`
-- `getAbortReason()`
-
-这层负责：
-- 流式工具执行
-- queued/executing/completed/yielded 状态机
-- sibling error / user interrupt / streaming fallback 处理
-
-#### `toolExecution.ts`
-最重要函数：
-- `classifyToolError()`
-- `runToolUse()`（主执行入口，虽然上面这次截取没展开到定义，但整个文件就是围绕它组织）
-
-这层负责：
-- 单个 tool_use 的完整执行与结果包装
-- permission / telemetry / storage / stop summary 等附加处理
+### 关键点
+- `toolOrchestration.ts` 负责分批与并发控制
+- `StreamingToolExecutor.ts` 负责流式到达场景下的状态机
+- `toolExecution.ts` 负责单个 tool_use 的完整执行语义
+- `toolHooks.ts` 负责工具层与治理层的连接
 
 ---
 
-## 7. Hook 调用链图
+## 7. Hook 调用链
 
 核心文件：`utils/hooks.ts`
 
-### 7.1 Hook 解析与匹配链
+### 7.1 匹配路径
 
 ```text
 createBaseHookInput(...)
   -> getHooksConfig(...)
   -> getMatchingHooks(...)
-      -> matcher / if condition / dedup / plugin/session hooks 合并
-  -> 执行具体 hook
+  -> 过滤 matcher / if 条件 / session hooks / plugin hooks / 去重
 ```
 
-### 7.2 Hook 执行链
+### 7.2 执行路径
 
 ```mermaid
 flowchart TD
-    A[业务事件: PreToolUse/Stop/SessionStart...] --> B[构造 hookInput]
+    A[生命周期事件] --> B[构造 hookInput]
     B --> C[getMatchingHooks]
-    C --> D[按类型分发]
+    C --> D[按 hook 类型分发]
     D --> E[execCommandHook]
     D --> F[execPromptHook]
     D --> G[execAgentHook]
     D --> H[execHttpHook]
-    D --> I[callback/function hook]
+    D --> I[callback / function hook]
     E --> J[parseHookOutput / processHookJSONOutput]
     F --> J
     G --> J
     H --> J
     I --> J
-    J --> K[blockingError / additionalContext / permissionDecision / updatedInput / stopReason]
+    J --> K[blocking error / permission decision / additional context / updated input / updated output]
 ```
 
-### 关键函数
-
-- `createBaseHookInput()`
-- `parseHookOutput()`
-- `processHookJSONOutput()`
-- `execCommandHook()`
-- `getMatchingHooks()`
-- `executePreToolHooks()`
-- `executePostToolHooks()`
-- `executePostToolUseFailureHooks()`
-- `executeStopHooks()`
-- `executeSessionStartHooks()`
-
-### 最重要的判断
-
-Claude Code 的 hooks 不是：
-- 调个 shell 脚本
-- 打个日志
-- 最多 fail/pass
-
-而是能真正回流控制主流程：
-- 阻断工具
-- 改写输入
-- 加附加上下文
-- 产出权限决策
-- 改写 MCP 工具输出
-- 停止继续执行
-
-这也是它和普通“插件回调”最大的区别。
+### 关键点
+- hook 的输入是事件协议的一部分
+- hook 的匹配逻辑与执行逻辑分离
+- hook 输出并非仅用于记录，而是可回流影响主流程
 
 ---
 
-## 8. Stop 阶段调用链图
+## 8. Stop 阶段调用链
 
 核心文件：`query/stopHooks.ts`
 
-### 最重要函数
+### 关键函数
 - `handleStopHooks()`
 
-### Stop 阶段逻辑链
+### 逻辑链
 
 ```text
 handleStopHooks(...)
   -> 构造 stopHookContext
   -> saveCacheSafeParams(...)
-  -> 执行模板/任务状态写入（特定 feature 下）
-  -> fire-and-forget:
-       - executePromptSuggestion(...)
-       - executeExtractMemories(...)
-       - executeAutoDream(...)
-  -> executeStopHooks(...)
-  -> 收集：
-       - progress messages
-       - hook success / non-blocking error / blocking error
-       - preventContinuation / stopReason
-  -> 生成 stop summary / blocking userMessage / interruption message
-  -> 返回给 queryLoop
+  -> 执行 stop hooks
+  -> 收集 blocking / preventContinuation / summary / progress
+  -> 启动回合结束阶段的后台动作
+       - prompt suggestion
+       - extract memories
+       - auto-dream
+       - cleanup
+  -> 将结果回流 Query Runtime
 ```
 
-### 这一层的意义
-
-很多人会把“assistant 本轮说完了”当成结束。
-
-Claude Code 不是。
-
-它把 stop 当成一个正式阶段，用来做：
-- 生命周期收尾
-- 自动记忆提取
-- prompt suggestion
-- 任务/teammate 完成态通知
-- 清理 computer-use / background bookkeeping
-
-也就是说：
-
-> Claude Code 的“一轮结束”本身就是一个子系统。
+### 说明
+Stop 阶段在 Claude Code 中是正式生命周期阶段，而不是 query loop 的简单尾部操作。
 
 ---
 
-## 9. Agent / Subagent 调用链图
+## 9. Agent / Subagent 调用链
 
 核心文件：`tools/AgentTool/AgentTool.tsx`
 
-### 关键导出与关键点
-- `getAutoBackgroundMs()`
-- `inputSchema`
-- `outputSchema`
+### 关键入口
 - `AgentTool = buildTool({...})`
-- `call()`（AgentTool 最核心逻辑）
+- `call()`
+- `getAutoBackgroundMs()`
 
-### AgentTool 主链
+### 调用链
 
 ```mermaid
 flowchart TD
     A[模型调用 AgentTool] --> B[AgentTool.call]
-    B --> C[获取 appState / permissionMode / agentDefinitions]
-    C --> D[filterDeniedAgents / filterAgentsByMcpRequirements]
-    D --> E[选择 selectedAgent 与 model/isolation]
-    E --> F{是否 remote / teleport}
+    B --> C[读取 appState / permissionMode / agentDefinitions]
+    C --> D[过滤 agent 与 MCP 要求]
+    D --> E[确定 agent type / model / isolation]
+    E --> F{remote / teleport?}
     F -->|是| G[teleportToRemote]
     F -->|否| H[本地 subagent 路径]
-    H --> I[assembleToolPool 为 worker 组装工具]
+    H --> I[assembleToolPool 为 worker 组装工具池]
     I --> J[创建 agentId / task / progress tracker]
-    J --> K{同步还是后台}
-    K -->|后台| L[registerAsyncAgent / runAgent in background]
-    K -->|同步| M[runAgent iterator]
-    M --> N[流式收集 agent messages / tool events / progress]
-    L --> O[返回 async agent 启动结果]
+    J --> K{foreground 或 background}
+    K -->|background| L[registerAsyncAgent / 后台运行]
+    K -->|foreground| M[runAgent iterator]
+    M --> N[收集 agent messages / progress / tool events]
+    L --> O[返回异步任务结果]
     N --> P[finalizeAgentTool]
-    P --> Q[回传 summary / output / task 状态]
+    P --> Q[回流主线程结果]
 ```
 
-### 这条链说明了什么
-
-Claude Code 的 subagent 不是 prompt hack，而是正式 runtime：
-
-- 有正式工具入口 `AgentTool`
-- 有 agent type / agent model / isolation / remote / worktree
-- 有 background task / foreground task
-- 有 progress / task registration / output file
-- 有 hook 和 permission 上下文继承
-
-这已经不是“让模型扮演另一个人”，而是：
-
-> **把“启动另一个代理”当成一级工具能力**
+### 说明
+subagent 在系统中并不是普通函数调用，而是新的运行时上下文。其执行过程具备独立的：
+- agentId
+- tool pool
+- task 状态
+- 权限上下文
+- 前后台模式
+- 结果收口方式
 
 ---
 
-## 10. 一条完整的“带工具 + hooks + subagent”的调用链
+## 10. 端到端调用链示例
 
-下面给一个最典型、也最有代表性的完整链：
+以下是一条典型的端到端路径：
 
 ```text
 用户输入
   -> main.tsx / REPL
   -> query.ts::queryLoop()
-  -> Claude API 返回 assistant + tool_use(AgentTool)
+  -> Claude API 返回 assistant + tool_use
   -> runTools()
   -> runToolUse()
   -> runPreToolUseHooks()
-  -> AgentTool.call()
-      -> 选 agent / model / isolation
-      -> assembleToolPool(worker)
-      -> runAgent(...)
-      -> 子代理内部再次跑 query/runtime
-      -> 子代理产出消息/工具结果/summary
+  -> Tool.call()
   -> runPostToolUseHooks()
-  -> tool_result 回填到主 query loop
-  -> 主 assistant 基于 agent 结果继续回答
+  -> tool_result 回填消息流
+  -> 主循环继续或结束
   -> handleStopHooks()
   -> executeStopHooks()
-  -> prompt suggestion / memory extract / auto-dream / cleanup
+  -> prompt suggestion / extract memories / cleanup
   -> 本轮结束
 ```
 
-这条链非常能体现 Claude Code 的产品特征：
-- 主循环不是单层
-- 工具内部还能再启动 agent runtime
-- hooks 横切整个生命周期
-- stop 阶段还有后台收尾任务
+若该工具为 `AgentTool`，则在 `Tool.call()` 内部会进一步启动 subagent runtime，并在完成后再回流主线程。
 
 ---
 
-## 11. 为什么 Claude Code 的主循环难抄但值得抄
+## 11. 主要控制权分布
 
-### 难抄的原因
+从调用链角度，可明确以下控制权分布：
 
-1. **横切 concern 太多**
-   - permissions
-   - hooks
-   - telemetry
-   - transcript
-   - compact
-   - background tasks
-   - MCP
-   - state
+- **主流程推进权**：`query.ts` / `QueryEngine.ts`
+- **工具执行权**：`services/tools/*`
+- **生命周期治理权**：`utils/hooks.ts`
+- **回合结束收口权**：`query/stopHooks.ts`
+- **多代理协作启动权**：`tools/AgentTool/*`
 
-2. **不是单文件逻辑**
-   主循环分散在：
-   - `main.tsx`
-   - `query.ts`
-   - `QueryEngine.ts`
-   - `services/tools/*`
-   - `utils/hooks.ts`
-   - `query/stopHooks.ts`
-   - `tools/AgentTool/*`
-
-3. **有大量 feature gate**
-   你看到的是“成熟产品生长后的 runtime”，不是最小实现。
-
-### 值得抄的原因
-
-1. 它非常真实地回答了“agent 产品真正会遇到什么问题”
-2. 它展示了如何把 hooks 做成正式生命周期协议
-3. 它展示了如何把 subagent 做成正式工具能力
-4. 它展示了如何把 stop 阶段从“尾巴”升格成“阶段”
-5. 它展示了工具并发、可中断、可回填上下文的产品化做法
+这一分布说明 Claude Code 在架构上较清晰地区分了“控制”“执行”“治理”“协作”。
 
 ---
 
-## 12. 如果你只想抓主线，最该读哪几个函数
+## 12. 结论
 
-### 第一梯队：核心中的核心
+Claude Code 的主循环不是单次模型请求的简单封装，而是一套多阶段回合执行结构：
 
-1. `query.ts::queryLoop()`
-2. `services/tools/toolOrchestration.ts::runTools()`
-3. `services/tools/StreamingToolExecutor.ts::processQueue()`
-4. `utils/hooks.ts::getMatchingHooks()`
-5. `utils/hooks.ts::execCommandHook()`
-6. `query/stopHooks.ts::handleStopHooks()`
-7. `tools/AgentTool/AgentTool.tsx::AgentTool.call()`
+1. Query Runtime 负责推进主流程
+2. Tool Plane 负责执行工具能力
+3. Hook Plane 负责对生命周期施加治理
+4. Stop 阶段负责回合结束的统一收口
+5. AgentTool 将多代理执行纳入同一运行时框架
 
-### 第二梯队：补上下文
-
-8. `Tool.ts::buildTool()`
-9. `tools.ts::assembleToolPool()`
-10. `utils/hooks.ts::processHookJSONOutput()`
-11. `QueryEngine.ts::submitMessage()`
-12. `main.tsx::main()`
-
----
-
-## 13. 最终结论
-
-如果用一句话总结 Claude Code 的主循环：
-
-> **它不是“LLM + tools”，而是“带生命周期 hooks、工具编排、stop 收尾、subagent 嵌套执行、MCP/skills/plugins 扩展能力的多阶段回合引擎”。**
-
-而这篇图里最重要的 4 个点是：
-
-1. **`queryLoop()` 是主心脏**
-2. **Tool execution 是一个独立编排层，不是 query 的小分支**
-3. **Hooks 横切整个生命周期，并且能回流控制逻辑**
-4. **AgentTool 让“启动另一个 agent”成为正式工具能力**
-
-这也是 Claude Code 最值得被拆、最值得被学的地方。
+因此，理解 Claude Code 的关键不在单一模块，而在于这些调用链如何协同构成统一的运行时语义。

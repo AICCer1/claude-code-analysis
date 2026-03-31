@@ -1,103 +1,100 @@
 # 子系统分析
 
-## 1. Commands 子系统
+## 1. 目标
 
-### 核心文件
-- `restored-src/src/commands.ts`
-- `restored-src/src/commands/**`
-
-### 它是什么
-Claude Code 的命令系统不是点缀，而是**正式控制面**。
-
-### 它怎么工作
-`commands.ts` 做几件关键事：
-
-1. 聚合 built-in commands
-2. 通过 feature gate 决定是否注入某些命令
-3. 加载：
-   - skill dir commands
-   - plugin skills
-   - bundled skills
-   - workflow commands
-4. 根据 availability（claude-ai / console 等）过滤命令
-5. 最终输出命令总表
-
-### 关键判断
-Claude Code 并没有把一切都交给自由对话，它保留了很重的命令控制平面。
+本文以子系统为分析单位，对 Claude Code 的核心结构进行拆解。与高层架构不同，这里不再停留于一级分层，而是进一步说明每个子系统的内部职责、边界和相互关系。
 
 ---
 
-## 2. Tools 子系统
+## 2. Commands 子系统
 
 ### 核心文件
-- `restored-src/src/Tool.ts`
-- `restored-src/src/tools.ts`
-- `restored-src/src/tools/**`
-- `restored-src/src/services/tools/**`
+- `commands.ts`
+- `commands/**`
 
-### 它是什么
-Claude Code 的能力是通过 Tool 协议系统化暴露的。
+### 职责
+- 聚合系统命令
+- 管理内置命令与扩展命令
+- 提供用户显式控制面的入口
 
-### 关键设计点
+### 关键机制
+`commands.ts` 主要承担以下工作：
+- 组织 built-in commands
+- 按 feature gate 与运行模式决定命令可见性
+- 收集 skill dir commands、plugin commands、workflow commands 等扩展命令
+- 根据 availability 规则过滤命令
 
-#### 2.1 `Tool` 是协议对象，不是普通函数
-在 `Tool.ts` 中，每个工具都有：
+### 架构定位
+- Interaction Layer 的控制面
+- Extension Plane 的一个注入点
 
+### 说明
+命令系统的存在意味着 Claude Code 并非单纯依赖自然语言交互，而是保留了明确的用户控制面。
+
+---
+
+## 3. Tools 子系统
+
+### 核心文件
+- `Tool.ts`
+- `tools.ts`
+- `tools/**`
+- `services/tools/**`
+
+### 职责
+- 定义统一工具协议
+- 构建工具池
+- 执行和调度工具
+- 处理工具权限、并发、中断和结果包装
+
+### 关键设计
+
+#### 3.1 Tool 作为协议对象
+在 `Tool.ts` 中，工具并非普通函数，而是包含以下能力：
 - `inputSchema`
 - `description()`
 - `call()`
 - `checkPermissions()`
 - `isConcurrencySafe()`
 - `isReadOnly()`
-- `interruptBehavior()`
-- `preparePermissionMatcher()`
 - `validateInput()`
+- `preparePermissionMatcher()`
 
-这意味着工具本身携带：
-- 能力描述
-- 参数协议
-- 权限逻辑
-- 并发逻辑
-- 生命周期逻辑
+该设计确保所有工具都在统一执行语义下进入系统。
 
-#### 2.2 `buildTool()` 统一构建工具
-这使得工具实现可以共享默认行为，并保证对外暴露的结构一致。
+#### 3.2 `buildTool()` 作为统一构建工厂
+`buildTool()` 保证工具定义结构一致，并降低各工具实现的样板负担。
 
-#### 2.3 `tools.ts` 是工具池总装厂
-它负责：
-- built-in tools 总表
-- deny rule 过滤
-- REPL/simple mode 特殊裁剪
-- MCP tools 合并
-- prompt-cache 稳定性的排序与去重
+#### 3.3 `tools.ts` 作为工具池组装器
+`tools.ts` 负责：
+- 收集 built-in tools
+- 应用 deny rules 与模式过滤
+- 合并 MCP tools
+- 对最终工具池进行排序与去重
 
-### 值得借鉴的地方
-对于自研 agent 项目，这一层最值得抄的是：
-- `Tool` 协议
-- `ToolUseContext`
-- `buildTool()` 工厂
-- `assembleToolPool()` 总装方式
+### 架构定位
+- Tool Execution Plane 的主体
 
 ---
 
-## 3. Hooks 子系统
+## 4. Hooks 子系统
 
 ### 核心文件
-- `restored-src/src/utils/hooks.ts`
-- `restored-src/src/utils/hooks/hookEvents.ts`
-- `restored-src/src/utils/hooks/hooksConfigManager.ts`
-- `restored-src/src/schemas/hooks.ts`
+- `utils/hooks.ts`
+- `utils/hooks/hookEvents.ts`
+- `utils/hooks/hooksConfigManager.ts`
+- `schemas/hooks.ts`
 
-### 它是什么
-Claude Code 的 hooks 是一套**正式生命周期事件系统**。
+### 职责
+- 定义生命周期事件
+- 匹配对应 hooks
+- 执行 hooks 并解释返回结果
+- 将治理能力接入主运行时
 
-### 它的关键特征
+### 关键设计
 
-#### 3.1 事件是正式枚举
-不是任意字符串，而是正式 `HookEvent`。
-
-#### 3.2 不同事件有不同 input 协议
-例如：
+#### 4.1 生命周期事件协议化
+Claude Code 将 hook 挂点正式建模为 `HookEvent`，例如：
 - `PreToolUse`
 - `PostToolUse`
 - `SessionStart`
@@ -105,224 +102,234 @@ Claude Code 的 hooks 是一套**正式生命周期事件系统**。
 - `InstructionsLoaded`
 - `FileChanged`
 
-每个事件都拥有自己的输入字段、matcher 字段和返回语义。
+#### 4.2 不同事件拥有独立输入协议
+不同 hook event 对应不同 `hookInput` 结构，而不是仅依赖事件名区分语义。
 
-#### 3.3 hook 不只是 shell command
-支持：
-- `command`
-- `prompt`
-- `http`
-- `agent`
-- `callback`
-- `function`
+#### 4.3 多类型 hook 执行器
+系统支持：
+- command hook
+- prompt hook
+- http hook
+- agent hook
+- callback hook
+- function hook
 
-#### 3.4 hook 输出不只是日志
-还能返回：
+#### 4.4 hook 返回结果可影响主流程
+hook 输出不仅用于记录，还可产生：
 - blocking error
 - additional context
 - permission decision
 - updated input
 - updated MCP output
-- continue/stop decision
+- continuation control
 
-### 为什么值钱
-这是一个真正能支撑：
-- policy
-- 审计
-- 自动审批
-- 企业控制
-- 外部集成
-
-的 hook 系统。
+### 架构定位
+- Lifecycle / Governance Plane 的主体
 
 ---
 
-## 4. Query / Session 子系统
+## 5. Query / Session 子系统
 
 ### 核心文件
-- `restored-src/src/query.ts`
-- `restored-src/src/QueryEngine.ts`
-- `restored-src/src/query/stopHooks.ts`
-- `restored-src/src/query/tokenBudget.ts`
-- `restored-src/src/query/config.ts`
+- `query.ts`
+- `QueryEngine.ts`
+- `query/stopHooks.ts`
+- `query/tokenBudget.ts`
+- `query/config.ts`
 
-### 它是什么
-这是 Claude Code 的对话/代理运行核心。
+### 职责
+- 管理消息历史与上下文
+- 推进一轮或多轮会话
+- 处理模型返回的 assistant/tool_use
+- 管理 continuation、compaction、fallback、error recovery
+- 在 REPL 与 SDK 路径之间复用主运行时语义
 
-### 它解决的问题
-- 如何组装 prompt/context/messages
-- 如何驱动多轮 agentic turn
-- 如何处理中途工具调用
-- 如何处理中断、错误、fallback、compact
-- 如何在 REPL 与 headless 路径复用核心逻辑
+### 关键设计
 
-### 关键判断
-这层非常值得研究，因为它体现的是**产品级对话 runtime**，不是单轮 LLM wrapper。
+#### 5.1 `query.ts`
+承担 REPL 路径下的主 query loop。
+
+#### 5.2 `QueryEngine.ts`
+承担 SDK / headless 路径的会话引擎封装。
+
+#### 5.3 `stopHooks.ts`
+将会话结束阶段独立建模为 stop 阶段，而不是简单地作为 query loop 尾部逻辑处理。
+
+### 架构定位
+- Session / Query Runtime 的主体
 
 ---
 
-## 5. State 子系统
+## 6. State 子系统
 
 ### 核心文件
-- `restored-src/src/state/AppStateStore.ts`
-- `restored-src/src/state/store.ts`
-- `restored-src/src/state/onChangeAppState.ts`
+- `state/AppStateStore.ts`
+- `state/store.ts`
+- `state/onChangeAppState.ts`
 
-### 它是什么
-一个承载 UI + 会话 + 工具 + MCP + task + plugin + notification 的大状态容器。
+### 职责
+- 保存共享应用状态
+- 支撑 UI 与运行时读取同一事实源
+- 承载横切状态：MCP、tasks、notifications、plugins、session hooks 等
 
-### AppState 里能看到什么
-- toolPermissionContext
-- tasks
-- agentNameRegistry
-- mcp.clients/tools/resources
-- plugins.enabled/disabled/errors
-- agentDefinitions
-- todos
-- notifications
-- elicitation.queue
-- sessionHooks
-- bagel/tungsten/computerUse 等模式状态
+### 关键内容
+AppState 中可见的重要状态包括：
+- `toolPermissionContext`
+- `tasks`
+- `agentNameRegistry`
+- `mcp.clients/tools/resources`
+- `plugins.enabled/disabled/errors`
+- `agentDefinitions`
+- `notifications`
+- `elicitation.queue`
+- `sessionHooks`
 
-### 关键判断
-这是典型“成熟产品状态模型”，说明 Claude Code 不再是简单 query 函数，而是一个长生命周期应用。
+### 架构定位
+- State / Policy / Persistence Infrastructure 的核心状态模型
+
+### 说明
+AppState 是共享事实源，但不应被视为运行时主流程控制器。
 
 ---
 
-## 6. Agent / Team / Task 子系统
+## 7. Agent / Task / Team 子系统
 
 ### 核心文件
-- `restored-src/src/tools/AgentTool/AgentTool.tsx`
-- `restored-src/src/tools/AgentTool/agentToolUtils.ts`
-- `restored-src/src/tools/AgentTool/runAgent.ts`
-- `restored-src/src/tasks/**`
-- `restored-src/src/tools/TeamCreateTool/**`
-- `restored-src/src/tools/SendMessageTool/**`
+- `tools/AgentTool/AgentTool.tsx`
+- `tools/AgentTool/agentToolUtils.ts`
+- `tools/AgentTool/runAgent.ts`
+- `tasks/**`
+- `Team*Tool`
+- `SendMessageTool`
 
-### 它是什么
-Claude Code 的多代理协作层。
-
-### 关键能力
-- 定义 agent type
+### 职责
 - 启动 subagent
-- 背景 agent
-- remote/worktree isolation
-- task 注册、进度、输出文件
-- team / teammate / routing
-- 消息转发与 task 生命周期事件
+- 注册和维护 task
+- 管理 foreground/background 代理执行
+- 支持 team / teammate / message routing
 
-### 这层的价值
-如果你想做类似 OpenHands/Codex/Claude Code 风格的多代理系统，这一层比 prompt 更值得拆。
+### 关键设计
+- Agent 通过正式工具 `AgentTool` 进入系统
+- Agent 启动过程包含独立的权限、工具池、task、progress 与输出管理
+- Agent 不是普通函数调用，而是新的运行时上下文
+
+### 架构定位
+- Collaboration Plane 的主体
 
 ---
 
-## 7. MCP 子系统
+## 8. MCP 子系统
 
 ### 核心文件
-- `restored-src/src/services/mcp/client.ts`
-- `restored-src/src/services/mcp/config.ts`
-- `restored-src/src/services/mcp/types.ts`
-- `restored-src/src/services/mcp/useManageMCPConnections.ts`
-- `restored-src/src/tools/MCPTool/**`
-- `restored-src/src/tools/ListMcpResourcesTool/**`
-- `restored-src/src/tools/ReadMcpResourceTool/**`
+- `services/mcp/client.ts`
+- `services/mcp/config.ts`
+- `services/mcp/types.ts`
+- `services/mcp/useManageMCPConnections.ts`
+- `tools/MCPTool/**`
+- `ListMcpResourcesTool/**`
+- `ReadMcpResourceTool/**`
 
-### 它是什么
-Claude Code 的外部工具/资源接入总线。
+### 职责
+- 管理 MCP server 接入
+- 发现和包装 MCP tool/resource/prompt
+- 管理 transport、auth、session 与错误处理
+- 将 MCP 能力纳入系统工具与资源体系
 
-### 关键能力
-- 多 transport：stdio / SSE / streamable HTTP / websocket
-- auth / OAuth / token refresh
-- tool/resource/prompt discovery
-- elicitation
-- MCP 输出裁剪与二进制落盘
-- claude.ai connector / official registry / proxy / TLS
+### 关键设计
+- 支持多种 transport
+- 支持 auth / OAuth / token refresh
+- 将 MCP 能力整合进主工具池
+- 支持 elicitation 与资源读取
 
-### 关键判断
-它已经不是“接个 MCP 试试”，而是产品级、企业可控级的 MCP 子系统。
+### 架构定位
+- Extension Plane 的核心子系统
 
 ---
 
-## 8. Skills / Plugins 子系统
+## 9. Skills / Plugins 子系统
 
 ### 核心文件
-- `restored-src/src/skills/loadSkillsDir.ts`
-- `restored-src/src/skills/bundled/**`
-- `restored-src/src/plugins/**`
-- `restored-src/src/utils/plugins/**`
+- `skills/loadSkillsDir.ts`
+- `skills/bundled/**`
+- `plugins/**`
+- `utils/plugins/**`
 
-### skills 在这里是什么
-不是“静态 prompt 文件”，而是带 frontmatter、paths、hooks、model、effort、allowed-tools 的动态配置单元。
+### 职责
+- 发现、解析并加载 skills
+- 处理 plugin 安装、刷新、缓存与扩展整合
+- 将 skill/plugin 内容转化为命令、工具限制、上下文规则与扩展配置
 
-### plugins 在这里是什么
-不是“只加命令”，而是更正式的扩展系统，能引入：
-- commands
-- skills
-- MCP server
-- plugin errors / enabled state / versioning / refresh 流程
+### 关键设计
 
-### 关键判断
-Claude Code 的扩展系统是多层的：
-- Skills：轻量、prompt/能力增强导向
-- Plugins：更正式的安装型扩展
-- MCP：外部 server 连接型扩展
+#### Skills
+- 具备 frontmatter
+- 支持路径触发
+- 可配置 hooks、model、effort、allowed-tools 等元信息
+
+#### Plugins
+- 具备更完整的包级别扩展语义
+- 可接入 commands、skills、MCP、LSP 等能力
+- 拥有独立错误收集与刷新机制
+
+### 架构定位
+- Extension Plane 的主要组成部分
 
 ---
 
-## 9. UI / Interaction 子系统
+## 10. LSP 子系统
+
+### 核心文件
+- `services/lsp/LSPClient.ts`
+- `services/lsp/LSPServerManager.ts`
+- `services/lsp/LSPServerInstance.ts`
+- `tools/LSPTool/LSPTool.ts`
+- `utils/plugins/lspPluginIntegration.ts`
+
+### 职责
+- 管理 LSP server 生命周期
+- 为语义代码理解提供统一调用接口
+- 将 LSP 能力封装为只读工具
+- 支持插件声明和加载 LSP server
+
+### 架构定位
+- Extension Plane 与 Tool Execution Plane 的交汇子系统
+
+### 说明
+LSP 在系统中的角色不是通用文本搜索替代，而是语义级代码理解能力的统一接入点。
+
+---
+
+## 11. 终端交互子系统
 
 ### 核心目录
 - `components/`
 - `ink/`
-- `hooks/`
 - `screens/`
+- `hooks/`
 
-### 它说明了什么
-说明 Claude Code 不只是“命令行包装 agent”，而是一个终端交互产品：
-- footer
-- selector
-- panel
-- prompt input
-- task panel
-- notifications
-- progress
-- remote bridge/session indicators
+### 职责
+- 承载 REPL 与终端界面交互
+- 展示任务、通知、工具进度和选择器
+- 管理用户输入体验
 
-如果你只是想抄 runtime，这部分优先级不高；
-如果你想抄产品体验，这部分很值钱。
+### 架构定位
+- Interaction Layer
+
+### 说明
+该层决定产品交互形态，但不决定系统的核心运行时语义。
 
 ---
 
-## 10. 哪些子系统最值得抄
+## 12. 子系统关系总结
 
-### 最值得抄的 5 个
-1. `Tool` 协议层
-2. `hooks` 生命周期层
-3. `AgentTool` / task / team 层
-4. `MCP` 接入层
-5. `skills` frontmatter + 条件注入层
+Claude Code 的主要子系统关系可概括为：
 
-### 最不建议原样照抄的 5 个
-1. 复杂 UI 壳层
-2. 过重的 analytics/telemetry
-3. 过多 feature gate 的历史负担
-4. 某些 Anthropic 自身渠道功能（bridge/buddy/chrome 等）
-5. 太多 provider/product-specific 的细节逻辑
+- Query / Session 子系统负责主流程推进
+- Tools 子系统负责执行能力
+- Hooks 子系统负责生命周期治理
+- State 子系统负责共享事实源
+- MCP / Skills / Plugins / LSP 子系统负责扩展接入
+- Agent / Task / Team 子系统负责多代理协作
+- Interaction 子系统负责终端交互承载
 
----
-
-## 11. 子系统级结论
-
-Claude Code 真正有价值的，不是某个单独功能，而是它把下面这些东西做成了正式系统：
-
-- `commands`
-- `tools`
-- `hooks`
-- `query/session`
-- `state`
-- `agents/tasks/teams`
-- `MCP`
-- `skills/plugins`
-
-这也是为什么这个仓值得拆：
-它让你看到一个成熟 coding agent 到底是由哪些“系统”拼出来的。
+这一定义方式比单纯列出目录更适合描述其系统结构。

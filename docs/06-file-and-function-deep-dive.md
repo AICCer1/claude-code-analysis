@@ -1,450 +1,367 @@
-# 文件级 / 函数级深挖
+# 关键文件与函数入口
 
-这一篇只挑**最关键、最值得读**的文件讲，不假装覆盖 1800+ 源文件。
+## 1. 目标
 
-目标不是“列全”，而是告诉你：
+本文不试图覆盖全部源文件，而是选取对系统结构和运行时语义最关键的文件，并说明：
 
-- 哪些文件是骨架
-- 这些文件里哪些函数/导出最值得盯
-- 每个文件在系统里到底扮演什么角色
+- 该文件在系统中的职责
+- 应优先阅读的函数、方法或导出
+- 阅读该文件后能够回答哪些架构问题
 
-自动索引参考：[`docs/generated/key-file-symbols.md`](generated/key-file-symbols.md)
-
----
-
-## 1. `main.tsx` —— 启动总装线
-
-### 它是什么
-整个 Claude Code 的总入口和组装工厂。
-
-### 最关键的阅读点
-
-#### `main`
-- CLI 启动主函数
-- 最值得看
-
-#### `initializeEntrypoint`
-- 决定启动期的上下文准备
-- 读 settings / env / auth / mode
-
-#### `runMigrations`
-- 启动时配置迁移
-
-#### `eagerLoadSettings`
-- 提前把 settings 载入进来
-
-#### `commandsPromise` / `agentDefsPromise` / `mcpConfigPromise`
-- 这些初始化 promise 非常说明架构：
-  - commands、agents、MCP、setup 是并行预热的
-
-### 为什么值得看
-你会看到 Claude Code 的产品化复杂度都在哪里汇聚。
+自动生成的符号索引见：[`docs/generated/key-file-symbols.md`](generated/key-file-symbols.md)
 
 ---
 
-## 2. `commands.ts` —— 命令总表聚合器
+## 2. `main.tsx` —— 系统装配入口
 
-### 它是什么
-不是单个命令实现，而是**所有命令来源的总装文件**。
+### 职责
+- 解析 CLI 参数
+- 初始化 settings、auth、hooks、MCP、commands、skills、agents
+- 决定系统运行路径
 
-### 最关键的阅读点
+### 建议关注
+- `main`
+- `initializeEntrypoint`
+- `eagerLoadSettings`
+- `runMigrations`
+- 启动期并行 promise：`commandsPromise`、`agentDefsPromise`、`mcpConfigPromise`、`setupPromise`
 
-#### `COMMANDS`
-- built-in command 总表
-- 一眼就能看出产品控制面的覆盖面
-
-#### `getSkills()`
-- 从 skills / plugins / bundled sources 收集命令型能力
-
-#### `loadAllCommands()`
-- 汇总技能、插件命令、workflow 命令
-
-#### `meetsAvailabilityRequirement()`
-- 命令 availability 策略
-
-### 为什么值得看
-如果你想知道 Claude Code 为什么不是“只有自由对话”，这文件会给你答案。
+### 阅读价值
+该文件用于理解：
+- 系统如何完成装配
+- 启动期哪些能力是并行预热的
+- REPL / headless / SDK / remote 等模式如何被区分
 
 ---
 
-## 3. `Tool.ts` —— 工具协议核心
+## 3. `commands.ts` —— 命令聚合入口
 
-### 它是什么
-整个工具系统的抽象底座。
+### 职责
+- 聚合 built-in commands 与扩展命令
+- 管理命令的可见性与可用性
 
-### 最关键的阅读点
+### 建议关注
+- `COMMANDS`
+- `getSkills()`
+- `loadAllCommands()`
+- `meetsAvailabilityRequirement()`
 
-#### `ToolUseContext`
-这是 Claude Code runtime 非常关键的上下文对象，里面塞了：
-- options/tools/commands
-- mcpClients/resources
-- getAppState/setAppState
-- appendSystemMessage
-- sendOSNotification
-- loaded skills / memory / hook / attribution / file history 等能力
+### 阅读价值
+该文件用于理解：
+- 命令系统在整体架构中的位置
+- skills / plugins / workflow 如何注入命令控制面
 
-它是 tool 与 runtime 的接缝。
+---
 
-#### `Tool` 类型
-这定义了一个工具真正需要提供什么：
-- `call()`
-- `description()`
+## 4. `Tool.ts` —— 工具协议定义
+
+### 职责
+- 定义 `Tool` 抽象
+- 定义 `ToolUseContext`
+- 提供统一工具构建与查找机制
+
+### 建议关注
+- `ToolUseContext`
+- `Tool` 类型
+- `buildTool()`
+- `toolMatchesName()`
+- `findToolByName()`
+
+### 阅读价值
+该文件用于理解：
+- 什么能力才算系统中的正式工具
+- 工具如何获得权限、状态、上下文与消息访问能力
+- 工具为何能够在统一运行时语义下被治理和调度
+
+---
+
+## 5. `tools.ts` —— 工具池组装器
+
+### 职责
+- 收集 built-in tools
+- 应用权限和模式过滤
+- 合并 MCP tools
+- 输出最终工具池
+
+### 建议关注
+- `getAllBaseTools()`
+- `filterToolsByDenyRules()`
+- `getTools()`
+- `assembleToolPool()`
+- `getMergedTools()`
+
+### 阅读价值
+该文件用于理解：
+- 系统最终向模型暴露的工具集合如何形成
+- 扩展能力与内置能力如何被统一整合
+
+---
+
+## 6. `query.ts` —— REPL 路径主循环
+
+### 职责
+- 承载交互路径下的 query 主循环
+- 管理 assistant/tool_use/tool_result 周期
+- 处理 continuation、compact、fallback 等主流程问题
+
+### 建议关注
+- `query()`
+- `queryLoop()`
+- `yieldMissingToolResultBlocks()`
+- 与 `handleStopHooks()` 的接缝
+
+### 阅读价值
+该文件用于理解：
+- 一轮 agent turn 如何推进
+- 工具结果如何回流消息历史
+- 主循环何时继续、停止或恢复
+
+---
+
+## 7. `QueryEngine.ts` —— SDK / headless 会话引擎
+
+### 职责
+- 将会话运行时封装为可调用引擎
+- 复用 Query Runtime 能力服务于 SDK / headless 路径
+
+### 建议关注
+- `class QueryEngine`
+- `submitMessage()`
+- 与 `processUserInput`、`query()`、`recordTranscript` 的关系
+
+### 阅读价值
+该文件用于理解：
+- 运行时能力如何脱离 REPL 进行复用
+- 会话引擎与交互层之间如何解耦
+
+---
+
+## 8. `services/tools/toolOrchestration.ts` —— 多工具调度器
+
+### 职责
+- 将多个 `tool_use` 请求按并发安全性分批执行
+- 管理串行与并行执行路径
+
+### 建议关注
+- `runTools()`
+- `partitionToolCalls()`
+- `runToolsSerially()`
+- `runToolsConcurrently()`
+
+### 阅读价值
+该文件用于理解：
+- Claude Code 如何定义工具并发边界
+- 为什么执行调度被单独抽成一层而不是内嵌在 query loop 中
+
+---
+
+## 9. `services/tools/StreamingToolExecutor.ts` —— 流式工具执行器
+
+### 职责
+- 在 assistant 流式返回过程中边接收边执行工具
+- 管理队列、状态机、中断与错误传播
+
+### 建议关注
+- `class StreamingToolExecutor`
+- `addTool()`
+- `processQueue()`
+- `createSyntheticErrorMessage()`
+- `getAbortReason()`
+
+### 阅读价值
+该文件用于理解：
+- 流式工具执行为什么需要独立状态机
+- sibling error / user interruption / fallback 如何影响执行语义
+
+---
+
+## 10. `services/tools/toolExecution.ts` —— 单工具执行主流程
+
+### 职责
+- 承载单个 tool_use 的完整执行逻辑
+- 处理权限、结果包装、错误分类、telemetry 等横切逻辑
+
+### 建议关注
+- `runToolUse()`
+- `classifyToolError()`
+- 工具执行前后与 hook、permission、storage 的接缝
+
+### 阅读价值
+该文件用于理解：
+- 单个工具调用在系统内的完整执行语义
+- 为什么工具执行需要独立于 query loop 与工具实现本身
+
+---
+
+## 11. `services/tools/toolHooks.ts` —— 工具与治理层接缝
+
+### 职责
+- 在工具执行前后接入 hooks
+- 处理 PostToolUse / PostToolUseFailure 结果
+
+### 建议关注
+- `runPostToolUseHooks()`
+- `runPostToolUseFailureHooks()`
+- 与 `executePreToolHooks()` / `executePostToolHooks()` 的关系
+
+### 阅读价值
+该文件用于理解：
+- 工具执行层与治理层如何协作
+- hook 输出如何回流到工具结果语义中
+
+---
+
+## 12. `utils/hooks.ts` —— 生命周期治理中枢
+
+### 职责
+- 统一构建 hook input
+- 匹配 hooks
+- 执行 hooks
+- 解释 hooks 输出
+
+### 建议关注
+- `createBaseHookInput()`
+- `getMatchingHooks()`
+- `execCommandHook()`
+- `parseHookOutput()`
+- `processHookJSONOutput()`
+- `executePreToolHooks()`
+- `executePostToolHooks()`
+- `executeStopHooks()`
+
+### 阅读价值
+该文件用于理解：
+- 生命周期治理是如何被协议化的
+- hook 为什么能够影响系统行为而不破坏主循环结构
+
+---
+
+## 13. `query/stopHooks.ts` —— stop 阶段处理器
+
+### 职责
+- 管理一轮结束时的 stop 阶段
+- 执行 stop hooks 与回合结束的后台收尾动作
+
+### 建议关注
+- `handleStopHooks()`
+- stop hook context 构造逻辑
+- prompt suggestion / extract memories / auto-dream / cleanup 的接入方式
+
+### 阅读价值
+该文件用于理解：
+- Claude Code 如何将“回合结束”提升为正式生命周期阶段
+
+---
+
+## 14. `tools/AgentTool/AgentTool.tsx` —— 多代理入口
+
+### 职责
+- 将启动 subagent 的能力封装为正式工具
+- 管理 agent 选择、隔离、工具池、task、后台执行等过程
+
+### 建议关注
 - `inputSchema`
-- `checkPermissions()`
-- `isConcurrencySafe()`
-- `isReadOnly()`
-- `validateInput()`
-- `preparePermissionMatcher()`
+- `outputSchema`
+- `AgentTool = buildTool({...})`
+- `call()`
+- `getAutoBackgroundMs()`
 
-#### `toolMatchesName()` / `findToolByName()`
-工具查找基础函数。
-
-#### `buildTool()`
-统一构建工厂。自研项目抄这层特别值。
-
-### 为什么值得看
-它告诉你 Claude Code 怎么定义“工具”这种一等公民对象。
+### 阅读价值
+该文件用于理解：
+- 多代理协作为何属于运行时能力而非提示层技巧
+- subagent 如何继承权限、状态和工具上下文
 
 ---
 
-## 4. `tools.ts` —— 工具池装配器
+## 15. `services/mcp/client.ts` —— MCP 接入核心
 
-### 它是什么
-把 built-in tools、MCP tools、feature-gated tools、模式过滤一起组装成最终可见工具池。
+### 职责
+- 管理 MCP server 连接
+- 处理 transport、auth、session、tool/resource discovery
+- 支撑 MCP tool 调用与错误处理
 
-### 最关键的阅读点
+### 建议关注
+- 连接逻辑入口
+- `McpAuthError` / `McpSessionExpiredError` / MCP tool call error 模型
+- timeout、auth、proxy、reconnect 相关逻辑
 
-#### `getAllBaseTools()`
-- built-in tools 总清单
-- 从这里能看到 Claude Code 的能力边界
-
-#### `filterToolsByDenyRules()`
-- 权限规则如何前置裁掉工具
-
-#### `getTools()`
-- 按 simple mode / REPL mode / deny rules 过滤 built-in tools
-
-#### `assembleToolPool()`
-- built-in + MCP tools 总装函数
-- 非常值得自研项目借鉴
-
-#### `getMergedTools()`
-- 更偏统计/搜索用途的合并视图
-
-### 为什么值得看
-这是“产品最终暴露给模型的工具集合”形成的地方。
+### 阅读价值
+该文件用于理解：
+- MCP 为什么在 Claude Code 中属于正式扩展平面，而不是简单外部适配器
 
 ---
 
-## 5. `query.ts` —— REPL query 主循环
+## 16. `skills/loadSkillsDir.ts` —— Skills 加载入口
 
-### 它是什么
-Claude Code 交互路径中最关键的 agent loop。
+### 职责
+- 发现并解析 skill 目录
+- 解析 frontmatter
+- 将 skills 转化为系统可使用的命令和上下文规则
 
-### 最关键的阅读点
+### 建议关注
+- `getSkillsPath()`
+- `parseHooksFromFrontmatter()`
+- `parseSkillFrontmatterFields()`
+- `loadSkillsFromSkillsDir()`
+- `getSkillDirCommands()`
+- `discoverSkillDirsForPaths()`
 
-#### `query()`
-- 外层包装
-- 负责生命周期收尾信号
-
-#### `queryLoop()`
-- 真正的大循环
-- 最关键中的最关键
-
-#### `yieldMissingToolResultBlocks()`
-- 工具结果配对修复/补齐逻辑
-
-#### `isWithheldMaxOutputTokens()`
-- 错误恢复细节
-
-### 这一文件里最值得观察的几类逻辑
-1. message/context 如何准备
-2. tool_use 如何被识别与执行
-3. stop hooks 如何接入
-4. compact / fallback / recovery 如何触发
-5. token budget 与 turn count 如何管理
-
-### 为什么值得看
-如果你只能读一个“运行时核心文件”，这就是候选之一。
+### 阅读价值
+该文件用于理解：
+- skills 如何从文件系统结构转化为正式扩展能力
 
 ---
 
-## 6. `QueryEngine.ts` —— SDK/headless 引擎
+## 17. `state/AppStateStore.ts` —— 共享状态模型入口
 
-### 它是什么
-一个更适合程序调用的会话引擎实现。
+### 职责
+- 定义和构造 AppState
+- 作为运行时与交互层的共享事实源
 
-### 最关键的阅读点
+### 建议关注
+- `getDefaultAppState()`
+- AppState 的字段分类：tasks、MCP、plugins、notifications、sessionHooks 等
 
-#### `class QueryEngine`
-- 这是 headless/SDK 路径的核心承载体
-
-#### `submitMessage()`
-- 对外最关键方法
-- 一次提交用户消息，内部跑完整 turn
-
-### 它比 `query.ts` 多体现了什么
-- 会话持久化
-- SDK message 适配
-- transcript/usage/structured output 等 headless concerns
-
-### 为什么值得看
-如果你想给自己的项目做“agent runtime SDK 化”，这文件比 UI 更有参考价值。
+### 阅读价值
+该文件用于理解：
+- 共享状态如何横跨 UI、工具执行、扩展管理和协作能力
 
 ---
 
-## 7. `services/tools/toolOrchestration.ts` —— 工具编排器
-
-### 它是什么
-真正把多个 `tool_use` 分批执行的调度器。
-
-### 最关键的阅读点
-
-#### `runTools()`
-- 工具执行总入口
-- 会按 concurrency safe 与否做分批
-
-#### `partitionToolCalls()`
-- 判断工具能否并发的关键逻辑
-
-#### `runToolsSerially()`
-- 串行工具执行路径
-
-#### `runToolsConcurrently()`
-- 并发安全工具执行路径
-
-### 为什么值得看
-这是 Claude Code 工具执行策略的“算法骨架”。
-
----
-
-## 8. `services/tools/StreamingToolExecutor.ts` —— 流式工具执行器
-
-### 它是什么
-支持 assistant 边 streaming 边执行工具的执行器。
-
-### 最关键的阅读点
-
-#### `class StreamingToolExecutor`
-- 维护 queued / executing / completed / yielded 状态机
-
-#### `addTool()`
-- 工具加入执行队列
-
-#### `processQueue()`
-- 排队与并发控制核心
-
-#### `createSyntheticErrorMessage()` / `getAbortReason()`
-- sibling error / user interrupt / fallback 的处理细节
-
-### 为什么值得看
-这个文件很能体现 Claude Code 想做“更实时、更像代理”的体验，而不是等模型整条输出完再处理。
-
----
-
-## 9. `services/tools/toolHooks.ts` —— 工具与 hook 的桥
-
-### 它是什么
-把工具执行与 hook 生命周期接起来。
-
-### 最关键的阅读点
-
-#### `runPostToolUseHooks()`
-- 处理 PostToolUse
-- 能把 hook 返回的 `updatedMCPToolOutput` 再注回工具输出流
-
-#### `runPostToolUseFailureHooks()`
-- 失败路径 hooks
-
-### 为什么值得看
-这文件很能说明：Claude Code 的 hooks 不是旁路日志，而是可以真实影响工具执行结果。
-
----
-
-## 10. `utils/hooks.ts` —— 生命周期 hook 核心
-
-### 它是什么
-整个 hooks 系统的执行中枢。
-
-### 最关键的阅读点
-
-#### `createBaseHookInput()`
-- 所有 hook input 的公共底座
-
-#### `executePreToolHooks()`
-#### `executePostToolHooks()`
-#### `executePostToolUseFailureHooks()`
-#### `executeStopHooks()`
-#### `executeSessionStartHooks()`
-#### `executePreCompactHooks()`
-- 这些 wrapper 是“事件 → hookInput”的桥
-
-#### `execCommandHook()`
-- command hook 执行核心
-
-#### `parseHookOutput()` / `processHookJSONOutput()`
-- hook 输出解释器
-
-### 为什么值得看
-如果你是做自己的 hooks/event runtime，这个文件含金量极高。
-
----
-
-## 11. `tools/AgentTool/AgentTool.tsx` —— 子代理总入口
-
-### 它是什么
-Claude Code 多代理体系里最关键的公开能力入口。
-
-### 最关键的阅读点
-
-#### `AgentTool`
-- 这是整个 subagent 能力的正式工具定义
-
-#### `inputSchema()` / `outputSchema()`
-- 明确 agent 调用输入输出协议
-
-#### `getAutoBackgroundMs()`
-- 背景 agent 策略控制
-
-#### `call()`
-- 这就是整套 subagent 执行逻辑的大门
-- 值得反复读
-
-### `call()` 里值得特别注意的点
-- agent type 解析
-- permission mode 继承
-- MCP requirement 检查
-- remote/worktree isolation
-- async vs sync 决策
-- task 注册与输出文件
-- agent prompt 构建
-- runAgent 调用
-
-### 为什么值得看
-如果你要做“delegate 给另一个 agent”这件事，这文件几乎是必看教材。
-
----
-
-## 12. `services/mcp/client.ts` —— MCP 客户端核心
-
-### 它是什么
-Claude Code 的 MCP 总客户端。
-
-### 最关键的阅读点
-
-#### `McpAuthError`
-#### `McpSessionExpiredError`
-#### `McpToolCallError_*`
-- 错误模型
-
-#### `isMcpSessionExpiredError()`
-- MCP session 过期识别
-
-#### `getMcpToolTimeoutMs()`
-- MCP tool timeout 策略
-
-#### `connectToServer()`
-- 真正的连接逻辑入口之一
-
-#### `createClaudeAiProxyFetch()`
-- 认证代理请求包装
-
-### 为什么值得看
-这个文件非常能体现 Claude Code 把 MCP 当成系统一等能力来经营，而不是附加插件。
-
----
-
-## 13. `skills/loadSkillsDir.ts` —— 技能加载核心
-
-### 它是什么
-skills 加载、解析、命名空间、frontmatter、条件激活的总控文件。
-
-### 最关键的阅读点
-
-#### `getSkillsPath()`
-- 不同来源的技能目录定位
-
-#### `parseHooksFromFrontmatter()`
-- skill frontmatter 与 hooks 的接缝
-
-#### `parseSkillFrontmatterFields()`
-- skill 元数据解释器
-
-#### `createSkillCommand()`
-- 把技能转成命令/可执行单元
-
-#### `loadSkillsFromSkillsDir()`
-#### `loadSkillsFromCommandsDir()`
-- 两种来源路径
-
-#### `getSkillDirCommands()`
-- 技能总装入口
-
-#### `discoverSkillDirsForPaths()`
-- 路径触发式技能发现
-
-### 为什么值得看
-如果你想做“markdown + frontmatter 驱动的 agent 扩展系统”，这个文件很值得抄思路。
-
----
-
-## 14. `state/AppStateStore.ts` —— 巨型状态模型
-
-### 它是什么
-Claude Code 的主状态模型。
-
-### 最关键的阅读点
-
-#### `getDefaultAppState()`
-- 默认状态构造函数
-
-### 读这个文件时要重点观察什么
-- AppState 里到底包含哪些横切 concerns
-- 哪些状态是 session 级
-- 哪些状态是 UI 级
-- 哪些状态是工具/MCP/task/plugin 共享的
-
-### 为什么值得看
-它能让你直观看出 Claude Code 作为“应用”而非“脚本”的复杂度。
-
----
-
-## 15. 关键文件阅读优先级建议
-
-### 第一梯队（必读）
-1. `main.tsx`
-2. `query.ts`
+## 18. 建议阅读顺序
+
+### 第一阶段：建立运行时主线
+1. `query.ts`
+2. `QueryEngine.ts`
 3. `Tool.ts`
 4. `tools.ts`
 5. `utils/hooks.ts`
-6. `tools/AgentTool/AgentTool.tsx`
 
-### 第二梯队（强烈建议读）
-7. `QueryEngine.ts`
-8. `services/tools/toolOrchestration.ts`
-9. `services/tools/StreamingToolExecutor.ts`
-10. `services/mcp/client.ts`
-11. `skills/loadSkillsDir.ts`
-12. `state/AppStateStore.ts`
+### 第二阶段：补足执行与治理接缝
+6. `services/tools/toolOrchestration.ts`
+7. `services/tools/StreamingToolExecutor.ts`
+8. `services/tools/toolExecution.ts`
+9. `services/tools/toolHooks.ts`
+10. `query/stopHooks.ts`
 
-### 第三梯队（按需深挖）
-13. `commands.ts`
-14. `query/stopHooks.ts`
-15. `services/tools/toolHooks.ts`
-16. `utils/hooks/hooksConfigManager.ts`
+### 第三阶段：理解扩展与协作
+11. `tools/AgentTool/AgentTool.tsx`
+12. `services/mcp/client.ts`
+13. `skills/loadSkillsDir.ts`
+14. `state/AppStateStore.ts`
+15. `commands.ts`
 
 ---
 
-## 16. 文件/函数级结论
+## 19. 结论
 
-如果一句话总结：
+Claude Code 的关键文件并不是随机分布的实现细节，而是对应其核心架构平面的若干入口：
 
-- **`main.tsx`** 决定系统怎么被组装起来
-- **`query.ts` / `QueryEngine.ts`** 决定一轮 agent 行为怎么跑
-- **`Tool.ts` / `tools.ts`** 决定能力如何被正式抽象
-- **`utils/hooks.ts`** 决定生命周期如何被外部规则接管
-- **`AgentTool.tsx`** 决定多代理协作如何正式化
-- **`services/mcp/client.ts`** 决定外部能力如何进系统
-- **`loadSkillsDir.ts`** 决定 markdown/frontmatter 扩展如何变成真实能力
+- `query.ts` / `QueryEngine.ts`：主运行时
+- `Tool.ts` / `tools.ts` / `services/tools/*`：执行平面
+- `utils/hooks.ts` / `query/stopHooks.ts`：治理平面
+- `AgentTool.tsx`：协作平面
+- `services/mcp/client.ts` / `loadSkillsDir.ts`：扩展平面
+- `AppStateStore.ts`：共享状态底座
 
-这几块合起来，就是 Claude Code 最值得拆的“灵魂部分”。
+以这些文件为阅读入口，能够较快建立系统级理解。

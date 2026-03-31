@@ -1,270 +1,222 @@
-# 大粒度架构分析
+# 高层架构
 
-## 1. 总体架构判断
+## 1. 目标
 
-如果把 Claude Code 视为一个产品，而不是一个 CLI 脚本，它的大粒度结构可以拆成下面 8 层：
+本文从系统设计角度描述 Claude Code 的高层结构，不讨论仓库背景、价值判断或产品定位争议，仅回答以下问题：
 
-1. **Entrypoint / Bootstrap 层**
-2. **Command / REPL 交互层**
-3. **Query / Session 引擎层**
-4. **Tool 执行层**
-5. **Hook / Lifecycle 扩展层**
-6. **MCP / Skills / Plugins 扩展层**
-7. **Agent / Team / Task 协作层**
-8. **State / Settings / Telemetry 基础设施层**
-
-这不是“一个 prompt + 几个工具”的小架构，而是一个**完整的 agentic runtime**。
+1. 系统由哪些主要层次构成
+2. 各层承担何种职责
+3. 各层之间如何协作
+4. 哪些部分属于运行时核心，哪些部分属于交互或接入层
 
 ---
 
-## 2. 架构总图（逻辑视角）
+## 2. 高层结构概览
+
+Claude Code 的高层结构可抽象为如下分层：
 
 ```text
-CLI / SDK / REPL 输入
-        ↓
-main.tsx 启动与初始化
-        ↓
-commands.ts / replLauncher.tsx / interactiveHelpers.tsx
-        ↓
-query.ts 或 QueryEngine.ts
-        ↓
-模型输出 assistant/tool_use
-        ↓
-services/tools/* 执行工具
-        ↓
-utils/hooks.ts 触发生命周期 hooks
-        ↓
-Tool / MCP / Skills / Plugins / Agents / Tasks 共同参与
-        ↓
-state/AppStateStore.ts + bootstrap/state.ts 持久化与全局状态协同
+Entrypoint / Bootstrap
+  -> Interaction Layer
+  -> Session / Query Runtime
+  -> Tool Execution Plane
+  -> Lifecycle / Governance Plane
+  -> Extension Plane
+  -> Collaboration Plane
+  -> State / Policy / Persistence Infrastructure
 ```
+
+其中：
+- **Entrypoint / Bootstrap** 负责装配
+- **Interaction Layer** 负责终端交互
+- **Session / Query Runtime** 负责主流程推进
+- **Tool Execution Plane** 负责能力执行
+- **Lifecycle / Governance Plane** 负责治理
+- **Extension Plane** 负责扩展接入
+- **Collaboration Plane** 负责多代理协作
+- **State / Policy / Persistence Infrastructure** 负责共享状态与基础设施
 
 ---
 
 ## 3. 各层职责
 
-### 3.1 Entrypoint / Bootstrap 层
+### 3.1 Entrypoint / Bootstrap
+**代表文件：** `main.tsx`, `bootstrap/state.ts`
 
-**代表文件：**
-- `restored-src/src/main.tsx`
-- `restored-src/src/bootstrap/state.ts`
+职责：
+- 解析 CLI 参数与运行模式
+- 初始化 settings、auth、MCP、hooks、commands、skills、agents
+- 选择进入 REPL、headless、SDK、remote 等路径
+- 准备启动期所需上下文
 
-**职责：**
-- 处理 CLI 参数
-- 初始化设置、认证、MCP、hooks、plugins、skills
-- 区分交互模式 / 非交互模式 / SDK 模式 / remote 模式
-- 决定最终进入 REPL 还是 headless query 流程
-
-**为什么它重要：**
-`main.tsx` 不是一个薄入口，而是产品装配线。很多系统级功能都在这里完成初始化、预热和 gating。
+说明：
+该层是系统装配入口，而不是业务运行时本身。
 
 ---
 
-### 3.2 Command / REPL 层
+### 3.2 Interaction Layer
+**代表目录：** `components/`, `ink/`, `screens/`, `commands/`, `interactiveHelpers.tsx`, `replLauncher.tsx`
 
-**代表文件：**
-- `restored-src/src/commands.ts`
-- `restored-src/src/replLauncher.tsx`
-- `restored-src/src/interactiveHelpers.tsx`
-- `restored-src/src/commands/**`
+职责：
+- 处理终端输入与输出
+- 管理 REPL 交互、选择器、通知、面板与状态展示
+- 提供命令控制面
 
-**职责：**
-- 定义 slash/local 命令系统
-- 承担交互式 UI/Ink 入口
-- 在“命令”与“自然语言 query”之间切换
-- 把技能、插件命令、workflow 命令并入命令总表
-
-**架构特征：**
-Claude Code 不是只靠自然语言驱动，它有一套很重的命令系统作为辅助控制面。
+说明：
+该层负责人与系统之间的交互，但不应被视为架构核心。其职责是承载交互，而不是定义运行时语义。
 
 ---
 
-### 3.3 Query / Session 引擎层
+### 3.3 Session / Query Runtime
+**代表文件：** `query.ts`, `QueryEngine.ts`, `query/config.ts`, `query/stopHooks.ts`
 
-**代表文件：**
-- `restored-src/src/query.ts`
-- `restored-src/src/QueryEngine.ts`
-- `restored-src/src/query/config.ts`
-- `restored-src/src/query/stopHooks.ts`
+职责：
+- 维护会话消息历史与上下文
+- 组织系统提示、用户上下文、系统上下文与历史消息
+- 调用模型并处理 assistant/tool_use 结果
+- 推进多轮 agentic turn
+- 处理 continuation、compaction、fallback、error recovery
 
-**职责：**
-- 组织 system prompt / user context / message history
-- 驱动模型调用与多轮循环
-- 处理 tool_use → tool_result → 下一轮 assistant
-- 管理 stop hooks、compaction、token budget、恢复逻辑
-- 提供 REPL 路径与 SDK/headless 路径的统一核心
-
-**架构特征：**
-这层就是 Claude Code 的“agent runtime heart”。
+说明：
+该层是系统的主控制中心。无论 REPL 路径还是 SDK 路径，最终都围绕这一运行时组织。
 
 ---
 
-### 3.4 Tool 执行层
+### 3.4 Tool Execution Plane
+**代表文件：** `Tool.ts`, `tools.ts`, `services/tools/toolOrchestration.ts`, `services/tools/StreamingToolExecutor.ts`, `services/tools/toolExecution.ts`, `services/tools/toolHooks.ts`
 
-**代表文件：**
-- `restored-src/src/Tool.ts`
-- `restored-src/src/tools.ts`
-- `restored-src/src/services/tools/toolOrchestration.ts`
-- `restored-src/src/services/tools/StreamingToolExecutor.ts`
-- `restored-src/src/services/tools/toolHooks.ts`
-- `restored-src/src/tools/**`
+职责：
+- 定义统一工具协议
+- 组装最终工具池
+- 调度工具执行
+- 处理串行、并行、中断、失败与结果包装
+- 在工具执行前后与 Hook Plane 建立接缝
 
-**职责：**
-- 定义统一 Tool 接口
-- 注册工具与按权限/模式过滤工具
-- 执行工具
-- 区分串行与并行工具执行
-- 统一接入 PreToolUse / PostToolUse / failure hooks
-
-**架构特征：**
-Claude Code 把“工具”当成一等对象，而不是在 query 里硬编码 Bash/Edit 特殊分支。
+说明：
+该层将“模型请求执行能力”转化为系统内统一、可治理、可观测的执行行为。
 
 ---
 
-### 3.5 Hook / Lifecycle 层
+### 3.5 Lifecycle / Governance Plane
+**代表文件：** `utils/hooks.ts`, `utils/hooks/*`, `schemas/hooks.ts`
 
-**代表文件：**
-- `restored-src/src/utils/hooks.ts`
-- `restored-src/src/utils/hooks/hookEvents.ts`
-- `restored-src/src/utils/hooks/hooksConfigManager.ts`
-- `restored-src/src/schemas/hooks.ts`
+职责：
+- 建模生命周期事件
+- 匹配与执行 hooks
+- 解释 hook 返回结果
+- 对系统流程施加策略、审计、阻断、附加上下文与权限决策
 
-**职责：**
-- 统一定义 HookEvent
-- 统一生成 hook input
-- 统一执行 command/prompt/http/agent/callback/function 类型 hooks
-- 把生命周期显式建模为事件
-
-**架构特征：**
-这是 Claude Code 里非常产品化的一层：
-不是“到处插 callback”，而是正式生命周期协议。
+说明：
+该层不是执行层，而是治理层。其核心作用是在不侵入主流程结构的前提下，对系统生命周期进行控制。
 
 ---
 
-### 3.6 MCP / Skills / Plugins 扩展层
+### 3.6 Extension Plane
+**代表文件：** `services/mcp/*`, `skills/*`, `plugins/*`, `commands.ts`
 
-**代表文件：**
-- `restored-src/src/services/mcp/**`
-- `restored-src/src/skills/**`
-- `restored-src/src/plugins/**`
+职责：
+- 将外部能力接入系统
+- 管理 MCP server、skills、plugins、commands 扩展
+- 将外部能力转化为系统内部可统一治理的对象
 
-**职责：**
-- 接入 MCP server
-- 把 MCP server 暴露成工具/资源/命令
-- 加载技能（skills）
-- 加载插件（plugins）
-- 把外部扩展汇入系统主循环
-
-**架构特征：**
-Claude Code 的扩展不是单通道，而是多通道：
-- tools
-- commands
-- skills
-- plugins
-- MCP resources
+说明：
+该层体现了系统的平台化能力。扩展接入不是旁路，而是正式进入系统的工具、命令、资源与运行时模型。
 
 ---
 
-### 3.7 Agent / Team / Task 协作层
+### 3.7 Collaboration Plane
+**代表文件：** `tools/AgentTool/*`, `tasks/*`, `Team*Tool`, `SendMessageTool`
 
-**代表文件：**
-- `restored-src/src/tools/AgentTool/**`
-- `restored-src/src/tasks/**`
-- `restored-src/src/tools/TeamCreateTool/**`
-- `restored-src/src/tools/SendMessageTool/**`
+职责：
+- 启动和管理 subagent
+- 注册与管理 task
+- 建模前台/后台代理协作
+- 支持 team / teammate / message routing
 
-**职责：**
-- 启动 subagent
-- 管理 agent/task 生命周期
-- 支持 teammate/team 概念
-- 支持后台 agent、消息转发、任务完成/失败状态
-
-**架构特征：**
-它不是“主 agent 偶尔调个 worker”，而是把 agent/task/team 当成正式产品能力建模。
+说明：
+该层负责将多代理协作纳入正式运行时，而不是依赖提示层技巧完成协作行为。
 
 ---
 
-### 3.8 State / Settings / Telemetry 基础设施层
+### 3.8 State / Policy / Persistence Infrastructure
+**代表文件：** `state/AppStateStore.ts`, `bootstrap/state.ts`, settings/permissions/session storage 相关模块
 
-**代表文件：**
-- `restored-src/src/state/AppStateStore.ts`
-- `restored-src/src/state/store.ts`
-- `restored-src/src/utils/settings/**`
-- `restored-src/src/services/analytics/**`
-- `restored-src/src/bootstrap/state.ts`
+职责：
+- 维护共享状态
+- 管理权限模式与规则
+- 持久化 transcript、session、plugin、MCP、task 等状态
+- 承载 notification、elicitation、history 等横切能力
 
-**职责：**
-- 全局状态与会话状态管理
-- 设置加载与迁移
-- 插件与技能刷新
-- telemetry / metrics / diagnostics
-- session、cwd、model、hooks、channels 等全局元数据管理
-
-**架构特征：**
-这是典型“成熟产品基础设施层”，很多复杂度其实都沉在这里。
+说明：
+该层是系统底座。它提供共享事实源和运行支撑，但不直接取代 Query Runtime 的主流程控制职能。
 
 ---
 
-## 4. REPL 路径 vs SDK 路径
+## 4. REPL 路径与 SDK 路径
 
-Claude Code 不是单一路径运行时。
+Claude Code 并非单一路径运行时。
 
-### REPL / 交互路径
-- 从 `main.tsx` 进入
-- 启动 Ink UI
-- 走完整 REPL 交互与消息循环
-- 更重 UI / prompt input / progress / notification
+### 4.1 REPL / 交互路径
+- 入口来自 `main.tsx`
+- 使用 Ink/终端界面承载交互
+- 使用完整消息流、工具流、通知流与任务展示能力
 
-### SDK / headless 路径
-- 主要由 `QueryEngine.ts` 承担
-- 一条更适合程序调用的无 UI 会话引擎
-- 依然复用大量 query/tool/hook 逻辑
+### 4.2 SDK / headless 路径
+- 以 `QueryEngine.ts` 为主要入口
+- 将会话能力封装为可调用引擎
+- 复用 Query Runtime、Tool Plane、Hook Plane 与持久化能力
 
-**判断：**
-Claude Code 的架构不是“REPL 专用”。它已经在往“可嵌入 runtime”方向抽。
-
----
-
-## 5. 这套架构最值得借鉴的地方
-
-### 5.1 Tool 是独立抽象层，不嵌在 query 里
-这是代码代理产品能否扩展的分水岭。
-
-### 5.2 Hook 是正式生命周期协议，不是散落 callback
-这决定了它能支持企业化策略、审计、自动审批、外部集成。
-
-### 5.3 Agent / Team / Task 是正式系统，而不是临时 prompt hack
-这决定了它是真多代理产品，而不是“提示模型扮演另一个 agent”。
-
-### 5.4 MCP 不是外挂，而是进入主系统的一级能力
-这决定了它的扩展边界更像平台，而不是插件盒子。
-
-### 5.5 State/Bootstrap 很重，说明它是产品，不是 demo
-很多团队只做 query loop，Claude Code 则已经做到了：
-- settings
-- session
-- policy
-- plugins
-- telemetry
-- remote
-- channels
+说明：
+两条路径共享核心运行时语义，仅在交互承载方式上不同。这表明系统已具备一定程度的运行时与界面解耦。
 
 ---
 
-## 6. 大粒度结论
+## 5. 高层依赖方向
 
-如果你把它当作一个产品架构来看，Claude Code 可以被理解成：
+从依赖方向看，高层结构可简化为：
 
-> **一个带 CLI/REPL 外壳的 agent runtime 平台**
+```text
+Interaction Layer
+    -> Session / Query Runtime
+        -> Tool Execution Plane
+        -> Lifecycle / Governance Plane
+        -> Extension Plane
+        -> Collaboration Plane
+        -> State / Policy / Persistence Infrastructure
+```
 
-它的核心不是某一个 prompt，而是以下几层的协同：
+补充说明：
+- Tool Plane 与 Hook Plane 并不是互相替代，而是执行与治理两个平面
+- Extension Plane 为 Tool Plane、Command Layer、Query Runtime 提供新增能力来源
+- Collaboration Plane 本身又会复用 Query Runtime 和 Tool Plane
 
-- Query loop
-- Tool abstraction
-- Hook lifecycle
-- MCP/skills/plugins extension
-- Agent/task/team orchestration
-- State/settings/telemetry infrastructure
+---
 
-这也是为什么它值得研究：
-它展示的不是单点能力，而是一整套“成熟 coding agent 产品”的骨架。
+## 6. 架构重点
+
+高层架构中最值得关注的不是功能数量，而是以下结构关系：
+
+1. **Query Runtime 拥有主流程控制权**
+2. **Tool Plane 通过统一协议吸纳执行能力**
+3. **Hook Plane 以生命周期协议承担治理职责**
+4. **Extension Plane 以正式通路接纳外部能力**
+5. **Collaboration Plane 将多代理能力纳入统一运行时**
+
+这些关系构成了 Claude Code 的主要系统特征。
+
+---
+
+## 7. 结论
+
+Claude Code 的高层架构不是“终端界面 + 模型调用 + 若干工具”的简单组合，而是一套分层明确的 agent runtime 结构：
+
+- 入口层负责装配
+- 交互层负责终端承载
+- Query Runtime 负责主流程推进
+- Tool Plane 负责执行
+- Hook Plane 负责治理
+- Extension Plane 负责扩展接入
+- Collaboration Plane 负责多代理协作
+- 基础设施层负责状态、权限与持久化
+
+这一结构为后续分析运行时主线、模块边界、故障域和演化接缝提供了基础。
