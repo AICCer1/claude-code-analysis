@@ -18,7 +18,7 @@
 
 而不是：
 
-- 一个作者自己模仿 Claude Code 写的项目
+- 一个基于 Claude Code 概念自行实现的第三方项目
 - Anthropic 官方公开的内部源代码仓
 
 ## 2. 为什么说它“像真的 Claude Code”
