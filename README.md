@@ -28,13 +28,16 @@ Claude Code 可以概括为：
 - [`docs/03-directory-map.md`](docs/03-directory-map.md)
 - [`docs/02-high-level-architecture.md`](docs/02-high-level-architecture.md)
 
-### 4. 文件与函数入口
+### 4. 能力总表与官方对齐
+- [`docs/11-capability-summary-and-official-alignment.md`](docs/11-capability-summary-and-official-alignment.md)
+
+### 5. 文件与函数入口
 - [`docs/06-file-and-function-deep-dive.md`](docs/06-file-and-function-deep-dive.md)
 - [`docs/generated/key-file-symbols.md`](docs/generated/key-file-symbols.md)
 - [`docs/generated/root-files.md`](docs/generated/root-files.md)
 - [`docs/generated/directory-counts.md`](docs/generated/directory-counts.md)
 
-### 5. 背景说明
+### 6. 背景说明
 - [`docs/01-repo-positioning-and-value.md`](docs/01-repo-positioning-and-value.md)
 
 ---
@@ -67,13 +70,16 @@ Claude Code 可以概括为：
 - `03-directory-map.md`
 - `05-subsystem-analysis.md`
 
-### D. 文件 / 函数主线
+### D. 能力总表 / 官方对齐
+- `11-capability-summary-and-official-alignment.md`
+
+### E. 文件 / 函数主线
 - `06-file-and-function-deep-dive.md`
 - `docs/generated/root-files.md`
 - `docs/generated/key-file-symbols.md`
 - `docs/generated/directory-counts.md`
 
-### E. 背景说明
+### F. 背景说明
 - `01-repo-positioning-and-value.md`
 
 ---
