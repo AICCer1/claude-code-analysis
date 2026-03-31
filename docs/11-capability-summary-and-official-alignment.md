@@ -24,19 +24,19 @@
 
 | 能力 | 官方术语 / 页面 | 官方链接 | 在还原仓中的体现 | 关键模块 | 关键文件 | 适合自研时优先程度 |
 |---|---|---|---|---|---|---|
-| 核心 agentic loop | How Claude Code works / agentic loop / tools | <https://code.claude.com/docs/en/how-claude-code-works> | Query Runtime + Tool Plane 构成主循环，负责 assistant → tool_use → tool_result → stop 的推进 | Query、Tools、Services | `query.ts`, `QueryEngine.ts`, `Tool.ts`, `tools.ts`, `services/tools/*` | 最高 |
-| 权限模式 | Permission modes | <https://code.claude.com/docs/en/permission-modes> | 存在多种 permission mode、deny/allow/ask 规则、工具权限上下文 | State、Permissions、Tools | `state/AppStateStore.ts`, `Tool.ts`, `tools.ts`, 权限相关 utils | 最高 |
-| Hooks | Hooks | <https://code.claude.com/docs/en/hooks> | 有正式生命周期事件、匹配器、命令/HTTP/agent/prompt hook、多种返回语义 | Governance Plane | `utils/hooks.ts`, `utils/hooks/*`, `schemas/hooks.ts` | 最高 |
-| 记忆 / 持久上下文 | Memory / CLAUDE.md / auto memory | <https://code.claude.com/docs/en/memory> | 有 memdir、memory scan、相关路径发现与自动记忆支持 | Memory、Session | `memdir/*`, `skills/bundled/remember.ts`, `utils/sessionStorage.ts` | 高 |
-| Skills | Skills | <https://code.claude.com/docs/en/skills> | skills 具备 frontmatter、目录发现、命令映射、条件加载、MCP skill builder | Skills、Commands | `skills/loadSkillsDir.ts`, `skills/bundled/*`, `skills/mcpSkillBuilders.ts`, `commands.ts` | 高 |
-| 内置命令 / 命令控制面 | Built-in commands / CLI reference | <https://code.claude.com/docs/en/commands> / <https://code.claude.com/docs/en/cli-reference> | 有大量 slash/local commands，且命令是正式控制面 | Commands、Interaction | `commands.ts`, `commands/*`, `replLauncher.tsx` | 高 |
-| Subagents | Sub-agents | <https://code.claude.com/docs/en/sub-agents> | AgentTool 是正式工具；subagent 拥有独立 tool pool、上下文、task 与运行态 | Collaboration Plane | `tools/AgentTool/*`, `tools/AgentTool/AgentTool.tsx`, `tools/AgentTool/runAgent.ts` | 高 |
-| Agent teams | Agent teams | <https://code.claude.com/docs/en/agent-teams> | 有 TeamCreate / TeamDelete / SendMessage / teammate mailbox / teammate context / in-process teammate | Collaboration Plane、Tasks、State | `tools/TeamCreateTool/*`, `tools/TeamDeleteTool/*`, `tools/SendMessageTool/*`, `utils/teammate*.ts`, `utils/teamDiscovery.ts`, `utils/teammateMailbox.ts`, `state/AppStateStore.ts` | 中高 |
-| MCP | MCP | <https://code.claude.com/docs/en/mcp> | MCP 有独立 client、connection manager、resource/tool/prompt 整合、auth、OAuth、transport | Extension Plane | `services/mcp/*`, `tools/MCPTool/*`, `tools/ListMcpResourcesTool/*`, `tools/ReadMcpResourceTool/*`, `tools/McpAuthTool/*` | 高 |
-| Plugins | Plugins | <https://code.claude.com/docs/en/plugins> | plugin 可打包 skills / hooks / agents / MCP / LSP；有 refresh、cache、schema、命名空间 | Extension Plane | `plugins/*`, `utils/plugins/*`, `plugins/bundled/index.ts` | 中高 |
-| LSP / code intelligence | Code intelligence / LSP plugins / discover-plugins | <https://code.claude.com/docs/en/how-claude-code-works> / <https://code.claude.com/docs/en/plugins> | 有 LSP server manager、client、diagnostics registry、LSPTool、plugin LSP integration | LSP、Tools、Plugins | `services/lsp/*`, `tools/LSPTool/LSPTool.ts`, `utils/plugins/lspPluginIntegration.ts` | 中高 |
-| SDK / headless | SDK | <https://code.claude.com/docs/en/sdk> | QueryEngine 将核心运行时封装为 headless/SDK 入口 | Query Runtime | `QueryEngine.ts`, `query.ts`, `utils/sessionStorage.ts` | 中 |
-| 会话延续 / fork / compact | How Claude Code works / CLI / commands / changelog | <https://code.claude.com/docs/en/how-claude-code-works> / <https://code.claude.com/docs/en/cli-reference> / <https://code.claude.com/docs/en/changelog> | 会话可 resume、fork、compact，stop hooks 与 session storage 深度参与 | Query、Session Storage | `query.ts`, `query/stopHooks.ts`, `utils/sessionStorage.ts`, `commands/compact/*` | 中 |
+| 核心 agentic loop | How Claude Code works / agentic loop / tools | <https://code.claude.com/docs/zh-CN/how-claude-code-works> | Query Runtime + Tool Plane 构成主循环，负责 assistant → tool_use → tool_result → stop 的推进 | Query、Tools、Services | `query.ts`, `QueryEngine.ts`, `Tool.ts`, `tools.ts`, `services/tools/*` | 最高 |
+| 权限模式 | Permission modes | <https://code.claude.com/docs/zh-CN/permission-modes> | 存在多种 permission mode、deny/allow/ask 规则、工具权限上下文 | State、Permissions、Tools | `state/AppStateStore.ts`, `Tool.ts`, `tools.ts`, 权限相关 utils | 最高 |
+| Hooks | Hooks | <https://code.claude.com/docs/zh-CN/hooks> | 有正式生命周期事件、匹配器、命令/HTTP/agent/prompt hook、多种返回语义 | Governance Plane | `utils/hooks.ts`, `utils/hooks/*`, `schemas/hooks.ts` | 最高 |
+| 记忆 / 持久上下文 | Memory / CLAUDE.md / auto memory | <https://code.claude.com/docs/zh-CN/memory> | 有 memdir、memory scan、相关路径发现与自动记忆支持 | Memory、Session | `memdir/*`, `skills/bundled/remember.ts`, `utils/sessionStorage.ts` | 高 |
+| Skills | Skills | <https://code.claude.com/docs/zh-CN/skills> | skills 具备 frontmatter、目录发现、命令映射、条件加载、MCP skill builder | Skills、Commands | `skills/loadSkillsDir.ts`, `skills/bundled/*`, `skills/mcpSkillBuilders.ts`, `commands.ts` | 高 |
+| 内置命令 / 命令控制面 | Built-in commands / CLI reference | <https://code.claude.com/docs/zh-CN/commands> / <https://code.claude.com/docs/zh-CN/cli-reference> | 有大量 slash/local commands，且命令是正式控制面 | Commands、Interaction | `commands.ts`, `commands/*`, `replLauncher.tsx` | 高 |
+| Subagents | Sub-agents | <https://code.claude.com/docs/zh-CN/sub-agents> | AgentTool 是正式工具；subagent 拥有独立 tool pool、上下文、task 与运行态 | Collaboration Plane | `tools/AgentTool/*`, `tools/AgentTool/AgentTool.tsx`, `tools/AgentTool/runAgent.ts` | 高 |
+| Agent teams | Agent teams | <https://code.claude.com/docs/zh-CN/agent-teams> | 有 TeamCreate / TeamDelete / SendMessage / teammate mailbox / teammate context / in-process teammate | Collaboration Plane、Tasks、State | `tools/TeamCreateTool/*`, `tools/TeamDeleteTool/*`, `tools/SendMessageTool/*`, `utils/teammate*.ts`, `utils/teamDiscovery.ts`, `utils/teammateMailbox.ts`, `state/AppStateStore.ts` | 中高 |
+| MCP | MCP | <https://code.claude.com/docs/zh-CN/mcp> | MCP 有独立 client、connection manager、resource/tool/prompt 整合、auth、OAuth、transport | Extension Plane | `services/mcp/*`, `tools/MCPTool/*`, `tools/ListMcpResourcesTool/*`, `tools/ReadMcpResourceTool/*`, `tools/McpAuthTool/*` | 高 |
+| Plugins | Plugins | <https://code.claude.com/docs/zh-CN/plugins> | plugin 可打包 skills / hooks / agents / MCP / LSP；有 refresh、cache、schema、命名空间 | Extension Plane | `plugins/*`, `utils/plugins/*`, `plugins/bundled/index.ts` | 中高 |
+| LSP / code intelligence | Code intelligence / LSP plugins / discover-plugins | <https://code.claude.com/docs/zh-CN/how-claude-code-works> / <https://code.claude.com/docs/zh-CN/plugins> | 有 LSP server manager、client、diagnostics registry、LSPTool、plugin LSP integration | LSP、Tools、Plugins | `services/lsp/*`, `tools/LSPTool/LSPTool.ts`, `utils/plugins/lspPluginIntegration.ts` | 中高 |
+| SDK / headless | SDK | <https://code.claude.com/docs/zh-CN/sdk> | QueryEngine 将核心运行时封装为 headless/SDK 入口 | Query Runtime | `QueryEngine.ts`, `query.ts`, `utils/sessionStorage.ts` | 中 |
+| 会话延续 / fork / compact | How Claude Code works / CLI / commands / changelog | <https://code.claude.com/docs/zh-CN/how-claude-code-works> / <https://code.claude.com/docs/zh-CN/cli-reference> / <https://code.claude.com/docs/zh-CN/changelog> | 会话可 resume、fork、compact，stop hooks 与 session storage 深度参与 | Query、Session Storage | `query.ts`, `query/stopHooks.ts`, `utils/sessionStorage.ts`, `commands/compact/*` | 中 |
 
 ---
 
@@ -86,8 +86,8 @@
 ## 4.1 核心 agentic loop / tool runtime
 
 官方对齐：
-- How Claude Code works：<https://code.claude.com/docs/en/how-claude-code-works>
-- Tools reference：<https://code.claude.com/docs/en/tools-reference>
+- How Claude Code works：<https://code.claude.com/docs/zh-CN/how-claude-code-works>
+- Tools reference：<https://code.claude.com/docs/zh-CN/tools-reference>
 
 源码落点：
 - `query.ts`
@@ -121,9 +121,9 @@
 ## 4.2 权限与治理
 
 官方对齐：
-- Permission modes：<https://code.claude.com/docs/en/permission-modes>
-- Hooks：<https://code.claude.com/docs/en/hooks>
-- Changelog（如 `PermissionDenied` hook、conditional hook filter）：<https://code.claude.com/docs/en/changelog>
+- Permission modes：<https://code.claude.com/docs/zh-CN/permission-modes>
+- Hooks：<https://code.claude.com/docs/zh-CN/hooks>
+- Changelog（如 `PermissionDenied` hook、conditional hook filter）：<https://code.claude.com/docs/zh-CN/changelog>
 
 源码落点：
 - `utils/hooks.ts`
@@ -155,8 +155,8 @@
 ## 4.3 记忆与持久上下文
 
 官方对齐：
-- Memory：<https://code.claude.com/docs/en/memory>
-- Features overview：<https://code.claude.com/docs/en/features-overview>
+- Memory：<https://code.claude.com/docs/zh-CN/memory>
+- Features overview：<https://code.claude.com/docs/zh-CN/features-overview>
 
 源码落点：
 - `memdir/memdir.ts`
@@ -186,10 +186,10 @@
 ## 4.4 Skills 与命令控制面
 
 官方对齐：
-- Skills：<https://code.claude.com/docs/en/skills>
-- Built-in commands：<https://code.claude.com/docs/en/commands>
-- CLI reference：<https://code.claude.com/docs/en/cli-reference>
-- Extend Claude Code：<https://code.claude.com/docs/en/features-overview>
+- Skills：<https://code.claude.com/docs/zh-CN/skills>
+- Built-in commands：<https://code.claude.com/docs/zh-CN/commands>
+- CLI reference：<https://code.claude.com/docs/zh-CN/cli-reference>
+- Extend Claude Code：<https://code.claude.com/docs/zh-CN/features-overview>
 
 源码落点：
 - `skills/loadSkillsDir.ts`
@@ -220,9 +220,9 @@
 ## 4.5 Subagents
 
 官方对齐：
-- Sub-agents：<https://code.claude.com/docs/en/sub-agents>
-- Features overview：<https://code.claude.com/docs/en/features-overview>
-- CLI reference（`claude agents`）：<https://code.claude.com/docs/en/cli-reference>
+- Sub-agents：<https://code.claude.com/docs/zh-CN/sub-agents>
+- Features overview：<https://code.claude.com/docs/zh-CN/features-overview>
+- CLI reference（`claude agents`）：<https://code.claude.com/docs/zh-CN/cli-reference>
 
 源码落点：
 - `tools/AgentTool/AgentTool.tsx`
@@ -253,8 +253,8 @@
 ## 4.6 Agent teams / teammate coordination
 
 官方对齐：
-- Agent teams：<https://code.claude.com/docs/en/agent-teams>
-- Features overview：<https://code.claude.com/docs/en/features-overview>
+- Agent teams：<https://code.claude.com/docs/zh-CN/agent-teams>
+- Features overview：<https://code.claude.com/docs/zh-CN/features-overview>
 
 源码落点：
 - `tools/TeamCreateTool/*`
@@ -290,9 +290,9 @@
 ## 4.7 MCP
 
 官方对齐：
-- MCP：<https://code.claude.com/docs/en/mcp>
-- Features overview：<https://code.claude.com/docs/en/features-overview>
-- Changelog：<https://code.claude.com/docs/en/changelog>
+- MCP：<https://code.claude.com/docs/zh-CN/mcp>
+- Features overview：<https://code.claude.com/docs/zh-CN/features-overview>
+- Changelog：<https://code.claude.com/docs/zh-CN/changelog>
 
 源码落点：
 - `services/mcp/client.ts`
@@ -325,8 +325,8 @@
 ## 4.8 Plugins
 
 官方对齐：
-- Plugins：<https://code.claude.com/docs/en/plugins>
-- Features overview：<https://code.claude.com/docs/en/features-overview>
+- Plugins：<https://code.claude.com/docs/zh-CN/plugins>
+- Features overview：<https://code.claude.com/docs/zh-CN/features-overview>
 
 源码落点：
 - `plugins/*`
@@ -354,8 +354,8 @@
 ## 4.9 LSP / code intelligence
 
 官方对齐：
-- How Claude Code works（code intelligence）：<https://code.claude.com/docs/en/how-claude-code-works>
-- Plugins（LSP plugins / `.lsp.json`）：<https://code.claude.com/docs/en/plugins>
+- How Claude Code works（code intelligence）：<https://code.claude.com/docs/zh-CN/how-claude-code-works>
+- Plugins（LSP plugins / `.lsp.json`）：<https://code.claude.com/docs/zh-CN/plugins>
 - Discover plugins（官方 code intelligence 插件入口，文中有引用）
 
 源码落点：
@@ -392,8 +392,8 @@
 ## 4.10 SDK / headless
 
 官方对齐：
-- SDK：<https://code.claude.com/docs/en/sdk>
-- CLI reference（`claude -p` 等 headless 路径）：<https://code.claude.com/docs/en/cli-reference>
+- SDK：<https://code.claude.com/docs/zh-CN/sdk>
+- CLI reference（`claude -p` 等 headless 路径）：<https://code.claude.com/docs/zh-CN/cli-reference>
 
 源码落点：
 - `QueryEngine.ts`
@@ -420,7 +420,7 @@
 
 建议把以下页面作为“能力演进索引”长期看：
 
-- Changelog：<https://code.claude.com/docs/en/changelog>
+- Changelog：<https://code.claude.com/docs/zh-CN/changelog>
 - Auto mode announcement：<https://claude.com/blog/auto-mode>
 - Auto mode engineering deep dive：<https://www.anthropic.com/engineering/claude-code-auto-mode>
 
