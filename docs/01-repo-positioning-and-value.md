@@ -120,7 +120,7 @@ source map 里看到的 `sourcesContent` 往往更接近：
 - session/state 管理层
 - subagent/team/task 协作层
 
-对自研 agent 项目来说，这些比单看 prompt 更值钱。
+对自研 agent 项目而言，这些内容比单独观察 prompt 更具有结构参考意义。
 
 ### 5.2 很高价值：hooks/event 设计参考
 

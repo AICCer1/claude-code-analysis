@@ -1,32 +1,24 @@
 # 关键文件与函数入口
 
-## 1. 目标
-
-本文不试图覆盖全部源文件，而是选取对系统结构和运行时语义最关键的文件，并说明：
-
-- 该文件在系统中的职责
-- 应优先阅读的函数、方法或导出
-- 阅读该文件后能够回答哪些架构问题
-
 自动生成的符号索引见：[`docs/generated/key-file-symbols.md`](generated/key-file-symbols.md)
 
 ---
 
-## 2. `main.tsx` —— 系统装配入口
+## 1. `main.tsx` —— 系统装配入口
 
 ### 职责
 - 解析 CLI 参数
 - 初始化 settings、auth、hooks、MCP、commands、skills、agents
 - 决定系统运行路径
 
-### 建议关注
+### 关键入口
 - `main`
 - `initializeEntrypoint`
 - `eagerLoadSettings`
 - `runMigrations`
 - 启动期并行 promise：`commandsPromise`、`agentDefsPromise`、`mcpConfigPromise`、`setupPromise`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 系统如何完成装配
 - 启动期哪些能力是并行预热的
@@ -40,13 +32,13 @@
 - 聚合 built-in commands 与扩展命令
 - 管理命令的可见性与可用性
 
-### 建议关注
+### 关键入口
 - `COMMANDS`
 - `getSkills()`
 - `loadAllCommands()`
 - `meetsAvailabilityRequirement()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 命令系统在整体架构中的位置
 - skills / plugins / workflow 如何注入命令控制面
@@ -60,14 +52,14 @@
 - 定义 `ToolUseContext`
 - 提供统一工具构建与查找机制
 
-### 建议关注
+### 关键入口
 - `ToolUseContext`
 - `Tool` 类型
 - `buildTool()`
 - `toolMatchesName()`
 - `findToolByName()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 什么能力才算系统中的正式工具
 - 工具如何获得权限、状态、上下文与消息访问能力
@@ -83,14 +75,14 @@
 - 合并 MCP tools
 - 输出最终工具池
 
-### 建议关注
+### 关键入口
 - `getAllBaseTools()`
 - `filterToolsByDenyRules()`
 - `getTools()`
 - `assembleToolPool()`
 - `getMergedTools()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 系统最终向模型暴露的工具集合如何形成
 - 扩展能力与内置能力如何被统一整合
@@ -104,13 +96,13 @@
 - 管理 assistant/tool_use/tool_result 周期
 - 处理 continuation、compact、fallback 等主流程问题
 
-### 建议关注
+### 关键入口
 - `query()`
 - `queryLoop()`
 - `yieldMissingToolResultBlocks()`
 - 与 `handleStopHooks()` 的接缝
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 一轮 agent turn 如何推进
 - 工具结果如何回流消息历史
@@ -124,12 +116,12 @@
 - 将会话运行时封装为可调用引擎
 - 复用 Query Runtime 能力服务于 SDK / headless 路径
 
-### 建议关注
+### 关键入口
 - `class QueryEngine`
 - `submitMessage()`
 - 与 `processUserInput`、`query()`、`recordTranscript` 的关系
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 运行时能力如何脱离 REPL 进行复用
 - 会话引擎与交互层之间如何解耦
@@ -142,13 +134,13 @@
 - 将多个 `tool_use` 请求按并发安全性分批执行
 - 管理串行与并行执行路径
 
-### 建议关注
+### 关键入口
 - `runTools()`
 - `partitionToolCalls()`
 - `runToolsSerially()`
 - `runToolsConcurrently()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - Claude Code 如何定义工具并发边界
 - 为什么执行调度被单独抽成一层而不是内嵌在 query loop 中
@@ -161,14 +153,14 @@
 - 在 assistant 流式返回过程中边接收边执行工具
 - 管理队列、状态机、中断与错误传播
 
-### 建议关注
+### 关键入口
 - `class StreamingToolExecutor`
 - `addTool()`
 - `processQueue()`
 - `createSyntheticErrorMessage()`
 - `getAbortReason()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 流式工具执行为什么需要独立状态机
 - sibling error / user interruption / fallback 如何影响执行语义
@@ -181,12 +173,12 @@
 - 承载单个 tool_use 的完整执行逻辑
 - 处理权限、结果包装、错误分类、telemetry 等横切逻辑
 
-### 建议关注
+### 关键入口
 - `runToolUse()`
 - `classifyToolError()`
 - 工具执行前后与 hook、permission、storage 的接缝
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 单个工具调用在系统内的完整执行语义
 - 为什么工具执行需要独立于 query loop 与工具实现本身
@@ -199,12 +191,12 @@
 - 在工具执行前后接入 hooks
 - 处理 PostToolUse / PostToolUseFailure 结果
 
-### 建议关注
+### 关键入口
 - `runPostToolUseHooks()`
 - `runPostToolUseFailureHooks()`
 - 与 `executePreToolHooks()` / `executePostToolHooks()` 的关系
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 工具执行层与治理层如何协作
 - hook 输出如何回流到工具结果语义中
@@ -219,7 +211,7 @@
 - 执行 hooks
 - 解释 hooks 输出
 
-### 建议关注
+### 关键入口
 - `createBaseHookInput()`
 - `getMatchingHooks()`
 - `execCommandHook()`
@@ -229,7 +221,7 @@
 - `executePostToolHooks()`
 - `executeStopHooks()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 生命周期治理是如何被协议化的
 - hook 为什么能够影响系统行为而不破坏主循环结构
@@ -242,12 +234,12 @@
 - 管理一轮结束时的 stop 阶段
 - 执行 stop hooks 与回合结束的后台收尾动作
 
-### 建议关注
+### 关键入口
 - `handleStopHooks()`
 - stop hook context 构造逻辑
 - prompt suggestion / extract memories / auto-dream / cleanup 的接入方式
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - Claude Code 如何将“回合结束”提升为正式生命周期阶段
 
@@ -259,14 +251,14 @@
 - 将启动 subagent 的能力封装为正式工具
 - 管理 agent 选择、隔离、工具池、task、后台执行等过程
 
-### 建议关注
+### 关键入口
 - `inputSchema`
 - `outputSchema`
 - `AgentTool = buildTool({...})`
 - `call()`
 - `getAutoBackgroundMs()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 多代理协作为何属于运行时能力而非提示层技巧
 - subagent 如何继承权限、状态和工具上下文
@@ -280,12 +272,12 @@
 - 处理 transport、auth、session、tool/resource discovery
 - 支撑 MCP tool 调用与错误处理
 
-### 建议关注
+### 关键入口
 - 连接逻辑入口
 - `McpAuthError` / `McpSessionExpiredError` / MCP tool call error 模型
 - timeout、auth、proxy、reconnect 相关逻辑
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - MCP 为什么在 Claude Code 中属于正式扩展平面，而不是简单外部适配器
 
@@ -298,7 +290,7 @@
 - 解析 frontmatter
 - 将 skills 转化为系统可使用的命令和上下文规则
 
-### 建议关注
+### 关键入口
 - `getSkillsPath()`
 - `parseHooksFromFrontmatter()`
 - `parseSkillFrontmatterFields()`
@@ -306,7 +298,7 @@
 - `getSkillDirCommands()`
 - `discoverSkillDirsForPaths()`
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - skills 如何从文件系统结构转化为正式扩展能力
 
@@ -318,11 +310,11 @@
 - 定义和构造 AppState
 - 作为运行时与交互层的共享事实源
 
-### 建议关注
+### 关键入口
 - `getDefaultAppState()`
 - AppState 的字段分类：tasks、MCP、plugins、notifications、sessionHooks 等
 
-### 阅读价值
+### 作用
 该文件用于理解：
 - 共享状态如何横跨 UI、工具执行、扩展管理和协作能力
 

@@ -1,15 +1,5 @@
 # 边界、所有权与运行时不变量
 
-本文聚焦三项架构问题：
-
-1. **边界（Boundaries）**
-2. **所有权（Ownership）**
-3. **不变量（Invariants）**
-
-这三项内容共同决定系统结构的稳定性与可维护性。
-
----
-
 ## 1. 系统边界：谁在系统内，谁在系统外
 
 从 Claude Code 运行时看，边界可以分成 4 圈。
@@ -24,17 +14,17 @@
 这一圈决定系统行为本身。
 
 ### 第二圈：扩展边界
-这是“可插拔但仍是系统一等公民”的圈：
+这是可插拔但进入系统正式能力模型的边界：
 - MCP servers
 - plugins
 - skills
 - commands
 - LSP servers
 
-这些东西可替换、可增加，但接入后会变成系统能力的一部分。
+这些能力在接入后会成为系统能力的一部分。
 
 ### 第三圈：执行环境边界
-这是系统需要依赖但并不拥有的外部环境：
+这是系统依赖但并不拥有的外部环境：
 - shell / bash / powershell
 - filesystem
 - git
@@ -48,20 +38,18 @@
 - session ingress / remote APIs
 - external MCP endpoints
 
-**架构结论：**
-Claude Code 是一个中间层系统：
-它位于“模型”与“本地/远程执行环境”之间，负责协调、治理、扩展和状态管理。
+Claude Code 位于模型与本地/远程执行环境之间，承担协调、治理、扩展接入和状态管理职责。
 
 ---
 
-## 2. 模块所有权：谁负责什么，谁不该负责什么
+## 2. 模块所有权
 
 ### 2.1 `main.tsx` 的所有权
 **拥有：** 装配、初始化、模式路由
 
 **不该拥有：** 具体业务执行细节
 
-它是 composition root，不应该承载细粒度业务规则。
+它是 composition root，不应承载细粒度业务规则。
 
 ---
 
@@ -77,7 +65,7 @@ Claude Code 是一个中间层系统：
 - 插件内部逻辑
 - UI 细节
 
-它是 orchestration runtime，不是 capability implementation。
+它是 orchestration runtime，而不是 capability implementation。
 
 ---
 
@@ -105,7 +93,7 @@ Claude Code 是一个中间层系统：
 - 主 query loop 的业务推进
 - 具体工具执行细节
 
-它是 governance plane，不是主执行器。
+它是 governance plane，而不是主执行器。
 
 ---
 
@@ -132,13 +120,11 @@ AppState 是事实源，不是 orchestrator。
 **不该拥有：**
 - 整个主线程 query loop 的所有细节
 
-它是 collaboration plane 的入口，不是系统总线。
+它是 collaboration plane 的入口，而不是系统总线。
 
 ---
 
-## 3. 系统内最关键的状态所有权
-
-Claude Code 不是无状态程序。理解它，必须理解状态归属。
+## 3. 关键状态所有权
 
 ### 3.1 会话消息状态
 **拥有者：** Query Runtime
@@ -162,7 +148,7 @@ Claude Code 不是无状态程序。理解它，必须理解状态归属。
 - additionalWorkingDirectories
 - 自动审批/等待策略
 
-这是治理状态，不是工具状态。
+这是治理状态，而不是工具状态。
 
 ---
 
@@ -179,7 +165,7 @@ Claude Code 不是无状态程序。理解它，必须理解状态归属。
 - sessionHooks
 - bagel/tungsten/computer-use 等模式状态
 
-这说明 AppState 承接的是横切 concerns。
+AppState 承接的是横切 concerns。
 
 ---
 
@@ -193,167 +179,107 @@ Claude Code 不是无状态程序。理解它，必须理解状态归属。
 - per-tool context modifiers
 - 某些工具内部缓存
 
-这是执行态局部上下文，不是会话事实源。
+这是执行态局部上下文，而不是会话事实源。
 
 ---
 
-## 4. Claude Code 的运行时不变量
+## 4. 运行时不变量
 
 运行时不变量用于说明系统在演化和扩展过程中仍必须保持的基本条件。
 
----
-
 ### 4.1 Query Runtime 持有唯一主回合控制权
-不变量：
 > **只有 Query Runtime 决定一轮 agent turn 是否继续、暂停、结束、compact、fallback。**
 
-工具、hooks、plugins 都可以影响它，
-但最终“本轮怎么推进”由 query/runtime 层统一裁决。
-
-这有助于避免系统退化为缺乏统一控制权的分散回调结构。
-
----
+工具、hooks、plugins 都可以影响结果，但主流程推进仍由 query/runtime 层统一裁决。
 
 ### 4.2 Tool 必须通过统一协议进入系统
-不变量：
-> **所有工具能力都必须经过 Tool 抽象和 ToolUseContext，而不是绕过 runtime 直接乱入。**
+> **所有工具能力都必须经过 Tool 抽象和 ToolUseContext，而不是绕过 runtime 直接进入系统。**
 
-这保证了：
-- 权限可控
-- 并发可控
-- hook 可接入
-- telemetry 可记录
-- result 可回流
-
----
+这保证了权限、并发、hook、结果回流和观测能力的一致性。
 
 ### 4.3 Hook 只能通过生命周期事件影响系统
-不变量：
-> **hooks 不是任意插针，而是只能通过已定义生命周期事件介入系统。**
+> **hooks 只能通过已定义生命周期事件介入系统。**
 
-这保证：
-- 扩展行为是可理解的
-- 可审计
-- 可枚举
-- 不会破坏主流程结构
-
----
+这保证了扩展行为的可理解性、可枚举性和可审计性。
 
 ### 4.4 AppState 是共享事实源，但不是最终控制器
-不变量：
-> **AppState 可以描述系统状态，但不直接替代 Query Runtime 的控制权。**
+> **AppState 描述系统状态，但不替代 Query Runtime 的控制权。**
 
-这是很关键的边界：
-- 状态 ≠ 编排
-- Store ≠ Runtime
-
----
+状态与编排在系统中是两个不同层次的问题。
 
 ### 4.5 Subagent 也是 Runtime，而不是普通函数调用
-不变量：
 > **AgentTool 启动的是另一个 agent runtime，而不是一个简单 worker function。**
 
-这就是为什么：
-- 它有 agentId
-- 有 task
-- 有 tool pool
-- 有权限上下文
-- 有 background/foreground
-- 有 hooks / events / messages
+因此 subagent 具备独立的 agentId、task、tool pool、权限上下文和结果收口方式。
 
----
-
-### 4.6 Stop 不是尾巴，而是正式阶段
-不变量：
+### 4.6 Stop 是正式阶段
 > **每一轮结束时，系统都必须经过 stop 阶段的治理与收尾。**
 
-这保证：
-- stop hooks 有稳定挂载点
-- prompt suggestion / memory extract / auto-dream 有稳定收口
-- 任务生命周期有明确结束点
-
----
+这保证了 stop hooks、memory extract、prompt suggestion 和 cleanup 等逻辑拥有稳定的挂载点。
 
 ### 4.7 扩展能力必须先被系统吸纳，再对模型暴露
-不变量：
-> **无论是 MCP、plugin、skill、LSP，外部能力都不能直接裸暴露给模型，必须先被系统吸纳进自己的工具/命令/资源协议。**
+> **MCP、plugin、skill、LSP 等能力必须先转化为系统内部协议对象，再对模型暴露。**
 
-这说明 Claude Code 不是“放任扩展”，而是“统一治理扩展”。
+这保证了扩展能力在进入系统后仍处于统一治理范围内。
 
 ---
 
-## 5. 关键边界上的典型协作方式
+## 5. 关键边界上的协作方式
 
 ### Query Runtime ↔ Tool Plane
-关系：**编排者 ↔ 执行者**
-
-- Query 决定何时执行工具
-- Tool Plane 负责怎么安全执行
+关系：编排者 ↔ 执行者
 
 ### Tool Plane ↔ Hook Plane
-关系：**执行者 ↔ 治理者**
-
-- Tool 执行前后触发 hook
-- Hook 可 block / modify / enrich
+关系：执行者 ↔ 治理者
 
 ### Query Runtime ↔ AppState
-关系：**控制器 ↔ 共享事实源**
-
-- Runtime 读写状态
-- 但运行控制仍由 Runtime 持有
+关系：控制器 ↔ 共享事实源
 
 ### AgentTool ↔ Query Runtime
-关系：**协作 runtime ↔ 主 runtime**
-
-- AgentTool 是主 runtime 调用的一个高级协作能力
-- 其内部又可启动新的 runtime
+关系：协作运行时 ↔ 主运行时
 
 ---
 
-## 6. 故障时谁该兜底
-
-这个问题也很架构。
+## 6. 故障时的收口层
 
 ### 工具执行失败
-由：Tool Plane / toolExecution / failure hooks 兜底
+由 Tool Plane / failure hooks 处理。
 
-### Hook 失败
-由：Hook Plane 处理为非阻断或阻断结果，再回流主流程
+### Hook 执行失败
+由 Hook Plane 解释为阻断或非阻断结果，再回流主流程。
 
-### LSP/MCP/plugin 初始化失败
-由：对应 extension manager 记录错误并尽量不拖死全局
+### LSP / MCP / plugin 初始化失败
+由各自的 manager 或加载器记录错误并局部降级。
 
 ### 主循环失败
-由：Query Runtime 决定 fallback / recover / terminal behavior
+由 Query Runtime 决定 fallback、recover 或 terminal behavior。
 
 ### UI 失败
-原则上不应破坏核心 runtime 语义
-
-这说明 Claude Code 的故障隔离是有层次的，而不是“一处报错全盘炸”。
+原则上不应改变核心运行时语义。
 
 ---
 
-## 7. 这套系统最容易被误读的点
+## 7. 常见误读
 
-### 误读 1：UI 是中心
-错。UI 很重，但 runtime 更中心。
+### 误读 1：UI 是系统中心
+不准确。UI 很重，但运行时更居于中心。
 
-### 误读 2：hooks 是插件小功能
-错。hooks 是治理层。
+### 误读 2：hooks 是附属插件功能
+不准确。hooks 属于治理层。
 
 ### 误读 3：MCP 只是工具来源之一
-不完全对。MCP 更像外部能力总线。
+不完整。MCP 更接近外部能力总线。
 
-### 误读 4：subagent 只是 prompt trick
-错。它是正式协作 runtime。
+### 误读 4：subagent 只是 prompt 技巧
+不准确。它是正式协作 runtime。
 
 ---
 
-## 8. 最终总结
+## 8. 总结
 
-如果把这一篇压成一句话：
+Claude Code 的架构稳定性主要来自：
+- 明确的边界划分
+- 清晰的状态所有权
+- 稳定的运行时不变量
 
-> Claude Code 的架构稳定性，来自明确的边界划分（runtime / execution / governance / extension / collaboration / state）、清晰的状态所有权，以及一组很硬的运行时不变量。
-
-这构成了其系统稳定性和产品化复杂度的主要来源，
-而不是单纯由工具数量、目录规模或界面复杂度决定。
+这些因素共同构成了其系统复杂度和可维护性的基础。
