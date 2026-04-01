@@ -31,7 +31,10 @@ Claude Code 可以概括为：
 ### 4. 能力总表与官方对齐
 - [`docs/11-capability-summary-and-official-alignment.md`](docs/11-capability-summary-and-official-alignment.md)
 
-### 5. 文件与函数入口
+### 5. 专题能力拆解
+- [`docs/12-notebook-edit-tool-analysis-and-migration.md`](docs/12-notebook-edit-tool-analysis-and-migration.md)
+
+### 6. 文件与函数入口
 - [`docs/06-file-and-function-deep-dive.md`](docs/06-file-and-function-deep-dive.md)
 - [`docs/generated/key-file-symbols.md`](docs/generated/key-file-symbols.md)
 - [`docs/generated/root-files.md`](docs/generated/root-files.md)
@@ -73,13 +76,16 @@ Claude Code 可以概括为：
 ### D. 能力总表 / 官方对齐
 - `11-capability-summary-and-official-alignment.md`
 
-### E. 文件 / 函数主线
+### E. 专题能力拆解
+- `12-notebook-edit-tool-analysis-and-migration.md`
+
+### F. 文件 / 函数主线
 - `06-file-and-function-deep-dive.md`
 - `docs/generated/root-files.md`
 - `docs/generated/key-file-symbols.md`
 - `docs/generated/directory-counts.md`
 
-### F. 背景说明
+### G. 背景说明
 - `01-repo-positioning-and-value.md`
 
 ---
