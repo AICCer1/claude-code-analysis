@@ -82,6 +82,94 @@ Read(.ipynb)
 
 该方案避免了让模型直接操作原始 notebook JSON，也避免了把 notebook 当普通文本文件处理。
 
+### 4.4 `NotebookEditTool` 与 `FileEditTool` 的关系
+二者是并列工具，而不是调用关系。
+
+更准确地说：
+- `NotebookEditTool` 不调用 `FileEditTool`
+- `FileEditTool` 也不会内部转调 `NotebookEditTool`
+- 两者只是共同挂载在同一套 tool runtime 之下
+
+在 Claude Code 中：
+- `FileEditTool` 负责普通文本文件
+- `NotebookEditTool` 负责 `.ipynb` 这类结构化 notebook 文档
+
+因此，notebook 编辑能力不是 `FileEditTool` 的一种特殊模式，而是单独升格为独立工具。
+
+### 4.5 `FileEditTool` 对 notebook 的分流行为
+`FileEditTool.ts` 中明确对 `.ipynb` 做了拦截：
+
+- 如果目标文件以 `.ipynb` 结尾
+- 则拒绝继续普通文本编辑
+- 返回提示，要求使用 `NotebookEdit`
+
+这说明关系是“分流”而不是“调用”：
+
+```text
+FileEdit 遇到 .ipynb
+  -> 拒绝
+  -> 提示改用 NotebookEdit
+```
+
+而不是：
+
+```text
+FileEdit -> NotebookEdit
+```
+
+### 4.6 真正与 `NotebookEditTool` 配对的是 `Read` 的 notebook 分支
+从主流程看，notebook 相关的真实配对关系是：
+
+```text
+FileReadTool (读取 .ipynb)
+  -> utils/notebook.ts 解析为 cell 视图
+  -> 模型基于 cell_id 规划修改
+  -> NotebookEditTool 落修改
+```
+
+因此，`NotebookEditTool` 的上游搭档更接近：
+- `FileReadTool` 中的 notebook 分支
+
+而不是：
+- `FileEditTool`
+
+### 4.7 `NotebookEditTool` 与 `FileEditTool` 的共享层
+虽然二者没有互相调用，但共享了一套底层基础设施：
+
+#### a. 统一 Tool 协议
+二者都通过 `buildTool(...)` 构建，具备一致的：
+- `validateInput`
+- `checkPermissions`
+- `call`
+- `renderToolUseMessage`
+- `mapToolResultToToolResultBlockParam`
+
+#### b. 统一的 read-before-edit 思路
+二者都要求：
+- 写前必须读过
+- 若文件自读取后已变化，则需重新读取
+
+#### c. 统一权限体系
+二者都走文件写权限检查，因此在治理层面都属于写工具。
+
+#### d. 统一的横切运行时
+二者都接入：
+- `toolExecution`
+- file history
+- permission UI
+- analytics
+- prompt suggestion / compact 等横切逻辑
+
+共享的是运行时框架；不共享的是文件编辑语义本身。
+
+### 4.8 迁移时的结构建议
+如果要迁移到自己的 agent 项目，应遵循与 Claude Code 相同的边界划分：
+
+- 普通文本文件：`Read` + `FileEdit` / `Write`
+- notebook 文件：`Read(.ipynb)` + `NotebookEdit`
+
+不建议把 notebook 编辑塞进通用 `FileEdit`。即使 `.ipynb` 在磁盘上是 JSON 文本，它在运行时仍应被视为结构化文档，而不是普通文本文件。
+
 ---
 
 ## 5. 读取路径分析
@@ -216,6 +304,12 @@ Claude Code 中 `cell_id` 的语义不是单一来源，而是双通道：
 ## 8.1 文件类型约束
 只允许编辑 `.ipynb` 文件；其他文件要求使用普通 `FileEdit`。
 
+这一约束与 `FileEditTool` 的分流逻辑相互对应：
+- `FileEditTool` 遇到 `.ipynb` 会拒绝普通文本编辑
+- `NotebookEditTool` 遇到非 `.ipynb` 会拒绝 notebook 编辑
+
+二者共同构成了文本文件与 notebook 文件的工具边界。
+
 ## 8.2 edit_mode 约束
 只接受 `replace | insert | delete`。
 
@@ -256,6 +350,21 @@ NotebookEdit 强制要求：
 - 使用 `jsonParse` 而不是 memoized 解析函数，以避免共享对象引用被原地修改导致缓存污染
 
 这说明 Claude Code 在 notebook 编辑上已经考虑了 JSON 缓存污染问题。
+
+### 9.1.1 这里不是通过 `FileEditTool` 做二次转调
+这一步非常重要。
+
+`NotebookEditTool` 在执行阶段不会：
+- 先把目标 cell 抽成文本
+- 再调用 `FileEditTool`
+- 最后把结果回填 notebook
+
+实际做法是：
+- 直接读取 notebook JSON
+- 在内存中定位并修改 `notebook.cells`
+- 再整体序列化并写回
+
+也就是说，它操作的是 notebook 的结构对象，而不是把 notebook 伪装成普通文本文件交给另一个编辑工具处理。
 
 ## 9.2 定位 cell index
 逻辑如下：
