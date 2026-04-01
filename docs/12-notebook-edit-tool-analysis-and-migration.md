@@ -8,7 +8,7 @@
 2. `NotebookEdit` 工具的输入、校验、执行和输出逻辑是什么
 3. Notebook 读取与编辑之间如何协同
 4. `cell_id` 在系统中如何定义与解析
-5. 将该能力迁移到自研 agent 项目时，推荐采用什么接口与实现方案
+5. 复刻该能力时需要保持哪些实现边界与行为
 
 ---
 
@@ -162,13 +162,13 @@ FileReadTool (读取 .ipynb)
 
 共享的是运行时框架；不共享的是文件编辑语义本身。
 
-### 4.8 迁移时的结构建议
-如果要迁移到自己的 agent 项目，应遵循与 Claude Code 相同的边界划分：
+### 4.8 当前实现中的结构边界
+Claude Code 当前采用如下边界划分：
 
 - 普通文本文件：`Read` + `FileEdit` / `Write`
 - notebook 文件：`Read(.ipynb)` + `NotebookEdit`
 
-不建议把 notebook 编辑塞进通用 `FileEdit`。即使 `.ipynb` 在磁盘上是 JSON 文本，它在运行时仍应被视为结构化文档，而不是普通文本文件。
+也就是说，尽管 `.ipynb` 在磁盘上表现为 JSON 文本，在运行时仍被作为结构化文档处理，而不是普通文本文件。
 
 ---
 
@@ -244,7 +244,7 @@ notebook 分支返回的是：
 这个记录的直接用途是支持后续 `NotebookEdit` 的 read-before-edit 和 stale-check。
 
 ### 5.1.3 `readFileState` 在 notebook 路径里的作用
-`readFileState` 不是普通缓存，而更接近“读取证明”或“弱版 revision guard”。
+`readFileState` 不是普通缓存，而更接近“读取证明”或基于读取状态的并发保护记录。
 
 在 notebook 路径中，它至少承担两件事：
 
@@ -314,7 +314,7 @@ Notebook cell 的 `source` 可能是：
 - 提取 png/jpeg 图片输出
 
 #### d. 大输出裁剪
-如果 outputs 总体积超过阈值，不直接把所有输出喂给模型，而是替换为提示文本，建议使用 Bash + jq 读取原始 outputs。
+如果 outputs 总体积超过阈值，不直接把所有输出喂给模型，而是替换为提示文本，并在提示中给出 Bash + jq 读取原始 outputs 的方式。
 
 #### e. 输出映射为模型友好格式
 该实现不会把 notebook 原始 JSON 直接返回给模型，而是映射为 `<cell id="...">...</cell>` 样式的文本块，并附带输出块。
@@ -621,214 +621,67 @@ Notebook 的读取和编辑由两个不同路径承担：
 
 ---
 
-## 13. 现有设计中的限制和可以改进的点
+## 13. Claude Code 当前实现中的边界与特征
 
-## 13.1 prompt 文案与实现存在漂移
-`prompt.ts` 文案仍提到 `cell_number`，但真实 schema 已经使用 `cell_id`。
+## 13.1 `prompt.ts` 文案与实现存在漂移
+`prompt.ts` 文案仍提到 `cell_number`，但真实 schema 和执行逻辑使用的是 `cell_id`。
 
-迁移时应统一文档、schema 和运行时语义，不建议混用。
+这一点说明：
+- 对外文案与实际工具协议并非完全同步
+- 真实行为应以 `NotebookEditTool.ts` 中的 schema 与逻辑为准
 
-## 13.2 相对路径与绝对路径表述不一致
-描述中要求绝对路径，但 runtime 仍兼容相对路径。
+## 13.2 路径约束在文案和 runtime 之间不完全一致
+工具描述写的是 notebook 路径必须为绝对路径，但 runtime 仍会在必要时对相对路径执行 `resolve(getCwd(), notebook_path)`。
 
-迁移时可以选择：
-- 文档要求绝对路径
-- runtime 容忍相对路径并做 resolve
+因此，Claude Code 当前行为是：
+- schema 描述偏向绝对路径
+- runtime 实际兼容相对路径
 
-## 13.3 cell type 切换实现不够严格
-当前 replace 场景下，如果传入 `cell_type` 且与当前 cell 不同，仅直接修改 `targetCell.cell_type`。
+## 13.3 cell type 切换是字段级修改
+在 replace 路径中，如果传入了 `cell_type` 且与当前 cell 不同，实现会直接修改 `targetCell.cell_type`。
 
-这一点不够严谨，因为：
-- markdown cell 和 code cell 的字段集合并不完全一致
-- type change 最稳妥的方式应当是重建 cell 结构
+当前实现并不会在 type 变更时重建整个 cell 对象。
 
-## 13.4 并发保护只依赖 mtime
-mtime 是最小可行方案，但不是最稳妥方案。若要迁移到自己的系统，更推荐使用：
-- revision
-- content hash
-- 或 notebook-level version token
+## 13.4 并发保护依赖 read state + mtime
+Claude Code 当前使用的是：
+- `readFileState`
+- 文件 mtime
 
-## 13.5 新 cell id 生成较弱
-当前实现使用简单随机串，不是强约束 id 方案。迁移时建议替换为：
-- UUID
-- 短 UUID
-- 或稳定的随机 id 生成器
+它不会在 notebook 编辑输入中显式传入额外版本标识。实际保护逻辑是：
+- 先确认该文件已经被读取过
+- 再确认文件在读取后未发生变化
 
----
-
-## 14. 迁移建议
-
-## 14.1 领域模型建议
-建议先定义内部 notebook 视图模型，而不是直接围绕 `.ipynb` JSON 工作。
-
-示例：
+## 13.5 新 cell id 的生成方式
+当 notebook format 支持 cell id 且当前为 insert 时，新 cell id 通过随机字符串生成：
 
 ```ts
-export type NotebookCellView = {
-  cell_id: string
-  cell_index: number
-  cell_type: 'code' | 'markdown'
-  source: string
-  execution_count?: number | null
-  outputs?: NotebookOutputView[]
-  language?: string
-}
-
-export type NotebookView = {
-  notebook_path: string
-  revision: string
-  language: string
-  cells: NotebookCellView[]
-}
+Math.random().toString(36).substring(2, 15)
 ```
 
-内部先完成：
-- `.ipynb JSON -> NotebookView`
-- `NotebookView -> .ipynb JSON`
-
-然后再在工具层暴露读写接口。
+这是当前实现的实际行为。
 
 ---
 
-## 14.2 接口设计建议
+## 14. 按 Claude Code 语义复刻时需要保持的行为
 
-### 方案 A：显式分为 NotebookRead + NotebookEdit
-如果你的系统还没有固定的通用 `Read` 协议，建议这样做：
+如果目标是复刻 Claude Code 当前实现，至少需要保持以下行为一致：
 
-#### NotebookRead
-输入：
-```json
-{
-  "notebook_path": "/abs/path/demo.ipynb",
-  "cell_id": "optional"
-}
-```
+1. `.ipynb` 读取走 `Read` 的 notebook 分支，而不是单独的 `NotebookRead` 工具
+2. notebook 编辑由独立 `NotebookEdit` 工具承担，而不是复用 `FileEdit`
+3. `FileEdit` 遇到 `.ipynb` 时直接拒绝，并提示改用 `NotebookEdit`
+4. notebook 读取返回的是 cell 视图，而不是原始 notebook JSON
+5. `cell_id` 优先取真实 cell id，不存在时回退到 `cell-N`
+6. `NotebookEdit` 支持 `replace / insert / delete`
+7. 修改 code cell 后会清空 `execution_count` 和 `outputs`
+8. 修改前要求 notebook 已在当前上下文中被 `Read`
+9. 修改前要求文件自读取后未发生变化
+10. notebook diff 与权限审批使用独立展示组件
 
-输出：
-```json
-{
-  "notebook_path": "/abs/path/demo.ipynb",
-  "revision": "sha256:...",
-  "language": "python",
-  "cells": [
-    {
-      "cell_id": "a1b2c3",
-      "cell_index": 0,
-      "cell_type": "code",
-      "source": "print('hi')",
-      "execution_count": 1,
-      "outputs": []
-    }
-  ]
-}
-```
-
-#### NotebookEdit
-输入：
-```json
-{
-  "notebook_path": "/abs/path/demo.ipynb",
-  "revision": "sha256:...",
-  "edit_mode": "replace",
-  "cell_id": "a1b2c3",
-  "new_source": "print('hello')",
-  "cell_type": "code"
-}
-```
-
-输出：
-```json
-{
-  "ok": true,
-  "notebook_path": "/abs/path/demo.ipynb",
-  "revision_before": "sha256:...",
-  "revision_after": "sha256:...",
-  "edited_cell_id": "a1b2c3",
-  "edit_mode": "replace"
-}
-```
-
-这是最清晰、最容易维护的方案。
+这些点共同构成了 Claude Code 当前 notebook 能力的主要行为边界。
 
 ---
 
-### 方案 B：复用通用 Read 工具 + 单独 NotebookEdit
-如果你的系统已有通用 `Read` 工具，则可以更接近 Claude Code：
-
-- `Read` 识别 `.ipynb`
-- `NotebookEdit` 单独承担写入
-
-优点：
-- 更接近 Claude Code
-- 工具数量更少
-
-缺点：
-- `Read` 输出类型分支更复杂
-- 通用文件读取协议需要支持 notebook 专用返回结构
-
-如果你的 runtime 还在设计中，优先推荐方案 A。
-
----
-
-## 14.3 最小实现顺序
-
-### Phase 1
-1. 完成 notebook 解析层
-2. 实现 NotebookRead
-3. 提供稳定的 `cell_id` / `cell_index`
-4. 返回 revision/hash
-
-### Phase 2
-1. 实现 `NotebookEdit.replace`
-2. 做 read-before-edit / revision check
-3. 对 code cell 修改后清理 outputs 与 execution_count
-
-### Phase 3
-1. 实现 `insert`
-2. 实现 `delete`
-3. 补 notebook diff / preview
-4. 补权限审批展示
-
-### Phase 4
-1. 支持大 output 裁剪
-2. 支持图片输出
-3. 支持 type change 时重建 cell 对象
-4. 接入更完整的历史与审计系统
-
----
-
-## 14.4 不建议直接照搬的部分
-
-以下几项不建议原样复制：
-
-1. `prompt.ts` 中 `cell_number` 与实现不一致的描述
-2. 仅依赖 mtime 的并发保护
-3. `Math.random()` 生成新 cell id
-4. replace 时仅修改 `cell_type` 而不重建 cell 对象
-
----
-
-## 15. 推荐迁移版本
-
-如果目标是尽快把该能力迁移到自研 agent 中，推荐采用如下版本：
-
-### 必需能力
-- notebook 专用读取视图
-- `cell_id` 定位
-- `replace` / `insert` / `delete`
-- revision/hash 校验
-- code cell 修改后清空 outputs
-
-### 建议增强
-- notebook diff 预览
-- 大输出裁剪
-- 图片输出处理
-- type change 时结构重建
-- 更强的 cell id 生成与稳定策略
-
----
-
-## 16. 总结
+## 15. 总结
 
 Claude Code 中的 notebook 编辑能力可以概括为：
 
@@ -838,17 +691,4 @@ Claude Code 中的 notebook 编辑能力可以概括为：
 4. **存在最小并发保护**：必须先读后写，并检查文件是否在读后发生变化
 5. **具备独立交互与审批支持**：notebook diff 与普通文件 diff 分开处理
 
-如果要迁移到自己的 agent 项目，建议先复用它的高层设计，而不是逐行复制实现细节。最值得保留的是：
-
-- cell 视图模型
-- `cell_id` 定位方式
-- Read-before-Edit 约束
-- code cell 修改后的状态重置
-- notebook 专用 diff / preview
-
-最值得改进的是：
-
-- 并发控制从 mtime 升级为 revision/hash
-- cell type 变更时重建对象
-- 统一文档和 schema 的语义定义
-- 使用更稳健的 cell id 生成策略
+如果目标是复刻 Claude Code 当前 notebook 能力，上述行为和边界应作为实现基线。
