@@ -189,6 +189,98 @@ FileReadTool (读取 .ipynb)
 2. 将读取结果缓存到 `readFileState`，供后续编辑时做 read-before-edit 校验
 3. 对 notebook 内容做体积限制，防止过大 notebook 直接进入上下文
 
+### 5.1.1 这段逻辑实际分为三层
+从执行顺序看，notebook 分支不是“读取 `.ipynb` 然后直接返回”，而是三个连续阶段：
+
+#### 第一层：把 notebook 解析成 cell 视图
+`readNotebook(resolvedFilePath)` 不是返回原始 notebook JSON，而是返回一组经过投影的 `cells`：
+- 每个 cell 都有 `cell_id`
+- `source` 被统一为字符串
+- code cell 的 `execution_count` / `outputs` 被提取出来
+- 缺失真实 id 的 cell 会回退成 `cell-N`
+
+这一层的目标是把 notebook 从磁盘格式转成模型可消费的结构化视图。
+
+#### 第二层：把 cell 视图序列化成 `cellsJson`
+`const cellsJson = jsonStringify(cells)` 的目的不是直接把 JSON 发给模型，而是用于：
+- 计算字节大小
+- 计算 token 成本
+- 写入 `readFileState` 作为后续编辑的读取快照
+
+因此，这里的 `cellsJson` 更像运行时内部表示，而不是最终展示格式。
+
+#### 第三层：返回结构化 notebook 数据，并在后续映射成 tool result
+notebook 分支返回的是：
+
+```ts
+{
+  type: 'notebook',
+  file: { filePath, cells }
+}
+```
+
+后续 `FileReadTool` 在将 `data.type === 'notebook'` 转成模型可见的 tool result 时，会调用：
+- `mapNotebookCellsToToolResult(data.file.cells, toolUseID)`
+
+也就是说，最终发给模型的不是 `cellsJson`，而是由 `cells` 再次格式化后的内容块。
+
+### 5.1.2 `cellsJson` 的三个用途
+`cellsJson` 在这段逻辑里承担三个明确职责：
+
+#### a. 大小检查
+通过 `Buffer.byteLength(cellsJson)` 检查 notebook 视图的字节大小。
+
+注意，这里检查的不是原始 `.ipynb` 文件大小，而是“投影后的 cell 视图”大小。
+
+#### b. token 检查
+通过 `validateContentTokens(cellsJson, ext, maxTokens)` 检查 notebook 视图是否会超过可接受的上下文 token 成本。
+
+#### c. 读状态快照
+通过 `readFileState.set(fullFilePath, { content: cellsJson, timestamp, ... })` 记录：
+- 模型上次看到的 notebook 视图内容
+- 当时文件的 mtime
+- 本次读取相关的 offset / limit
+
+这个记录的直接用途是支持后续 `NotebookEdit` 的 read-before-edit 和 stale-check。
+
+### 5.1.3 `readFileState` 在 notebook 路径里的作用
+`readFileState` 不是普通缓存，而更接近“读取证明”或“弱版 revision guard”。
+
+在 notebook 路径中，它至少承担两件事：
+
+#### a. 标记该文件已经被 Read 过
+`NotebookEditTool.validateInput(...)` 会先检查 notebook 是否在当前上下文中先被读取过。若未读取，则拒绝修改。
+
+#### b. 标记模型所见版本对应的文件时间戳
+`NotebookEditTool.validateInput(...)` 会比较：
+- 当前文件 mtime
+- 读取时记录的 `timestamp`
+
+如果文件在读取后发生了变化，则要求重新读取后再编辑。
+
+### 5.1.4 notebook 分支真正返回给模型的内容是什么
+真正发给模型的不是原始 `.ipynb` JSON，也不是 `cellsJson` 本身，而是 notebook cells 映射后的 tool result blocks。
+
+这部分在 `FileReadTool.ts` 中表现为：
+
+```ts
+case 'notebook':
+  return mapNotebookCellsToToolResult(data.file.cells, toolUseID)
+```
+
+因此，notebook read 的最终输出路径是：
+
+```text
+.ipynb JSON
+  -> readNotebook(...)
+  -> NotebookCellSource[]
+  -> cellsJson（大小检查 / token检查 / read state）
+  -> mapNotebookCellsToToolResult(...)
+  -> tool_result blocks
+```
+
+这也是 notebook 路径与普通文本文件路径的关键区别之一。
+
 ---
 
 ## 5.2 `utils/notebook.ts` 的职责
@@ -228,6 +320,44 @@ Notebook cell 的 `source` 可能是：
 该实现不会把 notebook 原始 JSON 直接返回给模型，而是映射为 `<cell id="...">...</cell>` 样式的文本块，并附带输出块。
 
 这说明 Claude Code 在 notebook 读取阶段就已经做了“模型侧视图适配”。
+
+### 5.2.1 `mapNotebookCellsToToolResult(...)` 的具体作用
+这一层负责把 `NotebookCellSource[]` 转成真正的 Anthropic tool result block。
+
+其核心做法是：
+
+#### a. 每个 cell 先映射为内容块
+通过 `cellContentToToolResult(cell)` 生成类似：
+
+```xml
+<cell id="abc123">print("hello")</cell>
+```
+
+如果 cell 不是 code，或者 code language 不是默认语言，还会额外附带：
+- `<cell_type>markdown</cell_type>`
+- `<language>r</language>`
+
+#### b. outputs 再映射为附加块
+通过 `cellOutputToToolResult(output)`：
+- 文本输出转成 text block
+- 图片输出转成 image block
+
+#### c. 相邻文本块合并
+`mapNotebookCellsToToolResult(...)` 最后会把相邻的 text blocks 合并，减少 block 数量，使 notebook 的 tool result 更紧凑。
+
+### 5.2.2 notebook read 的最终数据流
+综合前面的步骤，notebook read 的实际数据流可以写成：
+
+```text
+读取 .ipynb 文件
+  -> parse notebook JSON
+  -> processCell(...) 生成 NotebookCellSource[]
+  -> cellsJson 用于大小检查 / token 检查 / readFileState
+  -> mapNotebookCellsToToolResult(...) 生成 tool_result blocks
+  -> 模型看到的是 cell 文档流，而不是 raw notebook JSON
+```
+
+这也是 Claude Code 能让模型稳定引用 `cell_id` 的原因之一。
 
 ---
 
