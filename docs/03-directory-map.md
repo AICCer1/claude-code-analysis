@@ -1,21 +1,10 @@
 # 目录结构与模块映射
 
-## 1. 目标
-
-本文从目录结构出发，建立 Claude Code 源码的模块映射关系。分析重点不在目录数量本身，而在于：
-
-- 各目录在系统中的职责
-- 哪些目录对应运行时核心
-- 哪些目录对应交互层或接入层
-- 目录结构如何映射到高层架构
-
 自动生成的文件计数可参考：[`docs/generated/directory-counts.md`](generated/directory-counts.md)
 
 ---
 
-## 2. 目录分组方法
-
-为避免将目录分析简化为“逐个介绍文件夹”，本文按照架构职责进行分组。
+## 1. 目录分组
 
 ### 2.1 运行时核心目录
 这些目录直接参与系统的核心执行语义。
@@ -208,28 +197,28 @@
 
 ```text
 Entrypoint / Bootstrap
-  -> main.tsx / bootstrap/
+ -> main.tsx / bootstrap/
 
 Interaction Layer
-  -> commands/ / components/ / ink/ / screens/ / hooks/
+ -> commands/ / components/ / ink/ / screens/ / hooks/
 
 Session / Query Runtime
-  -> query.ts / QueryEngine.ts / query/
+ -> query.ts / QueryEngine.ts / query/
 
 Tool Execution Plane
-  -> Tool.ts / tools.ts / tools/ / services/tools/
+ -> Tool.ts / tools.ts / tools/ / services/tools/
 
 Lifecycle / Governance Plane
-  -> utils/hooks.ts / utils/hooks/ / schemas/hooks.ts
+ -> utils/hooks.ts / utils/hooks/ / schemas/hooks.ts
 
 Extension Plane
-  -> services/mcp/ / skills/ / plugins/ / commands.ts / services/lsp/
+ -> services/mcp/ / skills/ / plugins/ / commands.ts / services/lsp/
 
 Collaboration Plane
-  -> tools/AgentTool/ / tasks/ / coordinator/ / Team*Tool / SendMessageTool
+ -> tools/AgentTool/ / tasks/ / coordinator/ / Team*Tool / SendMessageTool
 
 State / Policy / Persistence Infrastructure
-  -> state/ / bootstrap/state.ts / utils/settings/ / utils/sessionStorage/ / permissions/
+ -> state/ / bootstrap/state.ts / utils/settings/ / utils/sessionStorage/ / permissions/
 ```
 
 ---
@@ -273,7 +262,7 @@ State / Policy / Persistence Infrastructure
 
 ## 6. 结论
 
-Claude Code 的目录结构并不是简单的“功能分组”，而是对其高层架构的直接映射：
+目标系统 的目录结构并不是简单的“功能分组”，而是对其高层架构的直接映射：
 
 - `query`、`tools`、`services/tools`、`utils/hooks`、`state` 等目录构成运行时核心
 - `services/mcp`、`skills`、`plugins`、`services/lsp` 等目录构成扩展平面

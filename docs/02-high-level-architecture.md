@@ -1,29 +1,18 @@
 # 高层架构
 
-## 1. 目标
+## 1. 高层结构概览
 
-本文从系统设计角度描述 Claude Code 的高层结构，不讨论仓库背景、价值判断或产品定位争议，仅回答以下问题：
-
-1. 系统由哪些主要层次构成
-2. 各层承担何种职责
-3. 各层之间如何协作
-4. 哪些部分属于运行时核心，哪些部分属于交互或接入层
-
----
-
-## 2. 高层结构概览
-
-Claude Code 的高层结构可抽象为如下分层：
+目标系统 的高层结构可抽象为如下分层：
 
 ```text
 Entrypoint / Bootstrap
-  -> Interaction Layer
-  -> Session / Query Runtime
-  -> Tool Execution Plane
-  -> Lifecycle / Governance Plane
-  -> Extension Plane
-  -> Collaboration Plane
-  -> State / Policy / Persistence Infrastructure
+ -> Interaction Layer
+ -> Session / Query Runtime
+ -> Tool Execution Plane
+ -> Lifecycle / Governance Plane
+ -> Extension Plane
+ -> Collaboration Plane
+ -> State / Policy / Persistence Infrastructure
 ```
 
 其中：
@@ -154,7 +143,7 @@ Entrypoint / Bootstrap
 
 ## 4. REPL 路径与 SDK 路径
 
-Claude Code 并非单一路径运行时。
+目标系统 并非单一路径运行时。
 
 ### 4.1 REPL / 交互路径
 - 入口来自 `main.tsx`
@@ -177,12 +166,12 @@ Claude Code 并非单一路径运行时。
 
 ```text
 Interaction Layer
-    -> Session / Query Runtime
-        -> Tool Execution Plane
-        -> Lifecycle / Governance Plane
-        -> Extension Plane
-        -> Collaboration Plane
-        -> State / Policy / Persistence Infrastructure
+ -> Session / Query Runtime
+ -> Tool Execution Plane
+ -> Lifecycle / Governance Plane
+ -> Extension Plane
+ -> Collaboration Plane
+ -> State / Policy / Persistence Infrastructure
 ```
 
 补充说明：
@@ -202,13 +191,13 @@ Interaction Layer
 4. **Extension Plane 以正式通路接纳外部能力**
 5. **Collaboration Plane 将多代理能力纳入统一运行时**
 
-这些关系构成了 Claude Code 的主要系统特征。
+这些关系构成了 目标系统 的主要系统特征。
 
 ---
 
 ## 7. 结论
 
-Claude Code 的高层架构不是“终端界面 + 模型调用 + 若干工具”的简单组合，而是一套分层明确的 agent runtime 结构：
+目标系统 的高层架构不是“终端界面 + 模型调用 + 若干工具”的简单组合，而是一套分层明确的 agent runtime 结构：
 
 - 入口层负责装配
 - 交互层负责终端承载

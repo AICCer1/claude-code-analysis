@@ -24,19 +24,19 @@
 
 ## 架构判断
 
-Claude Code 可以被视为一套 **terminal-native agent runtime platform**。
+目标系统 可以被视为一套 **terminal-native agent runtime platform**。
 
 其高层结构可概括为：
 
 ```text
 Entrypoint / Bootstrap
-  -> Session / Query Runtime
-  -> Tool Orchestration Plane
-  -> Lifecycle / Governance Plane
-  -> Extension Plane (MCP / Skills / Plugins / Commands)
-  -> Collaboration Plane (Agent / Task / Team)
-  -> State / Policy / Persistence Infrastructure
-  -> Terminal Interaction Layer
+ -> Session / Query Runtime
+ -> Tool Orchestration Plane
+ -> Lifecycle / Governance Plane
+ -> Extension Plane (MCP / Skills / Plugins / Commands)
+ -> Collaboration Plane (Agent / Task / Team)
+ -> State / Policy / Persistence Infrastructure
+ -> Terminal Interaction Layer
 ```
 
 其中：

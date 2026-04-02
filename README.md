@@ -1,12 +1,12 @@
-# Claude Code SourceMap 深度分析
+# Agent Runtime 架构深度分析
 
-> 分析对象：`ChinaSiro/claude-code-sourcemap`
+> 分析对象：`上游研究仓`
 >
-> 本仓库定位为 Claude Code 还原源码的架构分析仓，内容聚焦系统模型、模块边界、运行时主线、扩展平面、故障域以及文件/函数级入口。
+> 本仓库定位为 目标系统 整理源码的架构分析仓，内容聚焦系统模型、模块边界、运行时主线、扩展平面、故障域以及文件/函数级入口。
 
 ## 架构定义
 
-Claude Code 可以概括为：
+目标系统 可以概括为：
 
 > **一套 terminal-native agent runtime platform：以 Query Runtime 为中心，以 Tool Execution Plane 为执行层，以 Lifecycle / Governance Plane 为治理层，以 MCP / Skills / Plugins 为扩展层，以 Agent / Task / Team 为协作层。**
 
@@ -119,10 +119,10 @@ Claude Code 可以概括为：
 - `restored-src/src/**`
 
 分析目标包括：
-- 建立 Claude Code 的系统结构理解
+- 建立 目标系统 的系统结构理解
 - 提炼可迁移到自研 agent 项目的架构模式
 - 区分核心运行时与交互/接入层
 
 不包含以下主张：
-- 将该仓视为 Anthropic 官方内部开发仓
-- 假定已还原全部私有实现或构建环境
+- 将该仓视为 上游厂商 官方内部开发仓
+- 假定已整理全部私有实现或构建环境
